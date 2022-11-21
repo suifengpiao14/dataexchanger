@@ -7,37 +7,37 @@ import (
 	"github.com/d5/tengo/v2"
 )
 
+const (
+	EOF                  = "\n"
+	WINDOW_EOF           = "\r\n"
+	HTTP_HEAD_BODY_DELIM = EOF + EOF
+)
+
 type NamedStatment struct {
-	SQL  string
-	Data map[string]interface{}
-}
-
-type SQLTpl struct {
 	tengo.ObjectImpl
-	template      *template.Template
-	tpl           string
-	namedStatment NamedStatment
-	sql           string
+	template *template.Template
+	tpl      string
+	SQL      string
+	Data     map[string]interface{}
 }
 
-func NewSQLTpl(s string) *SQLTpl {
+func NewSQLTpl(s string) *NamedStatment {
 	tpl := NewTemplateByStr("", s)
-	return &SQLTpl{
-		template:      tpl,
-		tpl:           s,
-		namedStatment: NamedStatment{},
+	return &NamedStatment{
+		template: tpl,
+		tpl:      s,
 	}
 }
 
-func (t *SQLTpl) String() string {
+func (t *NamedStatment) String() string {
 	return t.sql
 }
 
-func (t *SQLTpl) CanCall() bool {
+func (t *NamedStatment) CanCall() bool {
 	return true
 }
 
-func (t *SQLTpl) Call(args ...tengo.Object) (ret tengo.Object, err error) {
+func (t *NamedStatment) Call(args ...tengo.Object) (ret tengo.Object, err error) {
 	if len(args) != 1 {
 		return nil, tengo.ErrWrongNumArguments
 	}
@@ -61,7 +61,7 @@ func (t *SQLTpl) Call(args ...tengo.Object) (ret tengo.Object, err error) {
 	switch fn {
 	case "sql":
 		sql := t.ToSQL(data)
-		ret = tengo.String{
+		ret = tengo.Map{
 			Value: sql,
 		}
 		return ret, nil
@@ -76,8 +76,24 @@ func (t *SQLTpl) Call(args ...tengo.Object) (ret tengo.Object, err error) {
 	return tengo.UndefinedValue, nil
 }
 
-func (t *SQLTpl) ToSQL(data map[string]interface{}) (sql string) {
-	return sql
+func (t *NamedStatment) ToSQL(name string, volume VolumeInterface) (namedSQL string, namedData map[string]interface{}, err error) {
+
+	var b bytes.Buffer
+	err = t.template.ExecuteTemplate(&b, name, volume)
+	if err != nil {
+		err = errors.WithStack(err)
+		return namedSQL, namedData, err
+	}
+	out := strings.ReplaceAll(b.String(), WINDOW_EOF, EOF)
+	out = util.TrimSpaces(out)
+
+	tplOut := t.template.E(volume, templateName)
+	tplOut = util.StandardizeSpaces(tplOut)
+	if tplOut == "" {
+		err := errors.Errorf("sql template :%s return empty sql", templateName)
+		panic(err)
+	}
+	return namedSQL, namedData, nil
 }
 
 func NewTemplateByStr(name string, s string) (tmpl *template.Template) {

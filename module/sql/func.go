@@ -19,3 +19,8 @@ func (c *preComma) PreComma() string {
 	c.comma = ","
 	return out
 }
+
+type VolumeInterface interface {
+	SetValue(key string, value interface{})
+	GetValue(key string, value interface{}) (ok bool)
+}
