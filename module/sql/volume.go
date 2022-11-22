@@ -1,7 +1,6 @@
 package sql
 
 import (
-	"encoding/json"
 	"reflect"
 	"strconv"
 	"strings"
@@ -26,32 +25,8 @@ func (v *volumeMap) init() {
 func (v *volumeMap) SetValue(key string, value interface{}) {
 	v.init()
 	// todo 并发lock
-	if !strings.Contains(key, ".") {
-		(*v)[key] = value
-		return
-	}
-	// 写入json
-	firstDot := strings.Index(key, ".")
-	root := key[:firstDot]
-	jsonKey := key[firstDot+1:]
-	data, ok := (*v)[root]
-	if !ok {
-		data = ""
-	}
-	dstType := "string"
-	str, ok := data.(string)
-	if !ok {
-		b, err := json.Marshal(data)
-		if err != nil {
-			panic(err)
-		}
-		str = string(b)
-	}
-	err := Add2json(&str, jsonKey, dstType, value)
-	if err != nil {
-		panic(err)
-	}
-	(*v)[root] = str
+	(*v)[key] = value
+
 }
 
 func (v *volumeMap) GetValue(key string, value interface{}) bool {
