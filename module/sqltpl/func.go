@@ -1,22 +1,22 @@
-package sql
+package sqltpl
 
 import (
 	"crypto/md5"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
-	"text/template"
+	textTemplate "text/template"
 	"time"
 
 	"github.com/rs/xid"
+	"github.com/suifengpiao14/datacenter/module/template"
 )
 
 const IN_INDEX = "__inIndex"
 
-var TemplatefuncMap = template.FuncMap{
+var TemplatefuncMap = textTemplate.FuncMap{
 	"zeroTime":      ZeroTime,
 	"currentTime":   CurrentTime,
 	"permanentTime": PermanentTime,
@@ -37,7 +37,7 @@ var TemplatefuncMap = template.FuncMap{
 	//"row2Column":        util.Row2Column,
 }
 
-func ZeroTime(volume VolumeInterface) (string, error) {
+func ZeroTime(volume template.VolumeInterface) (string, error) {
 	named := "ZeroTime"
 	placeholder := ":" + named
 	value := "0000-00-00 00:00:00"
@@ -45,7 +45,7 @@ func ZeroTime(volume VolumeInterface) (string, error) {
 	return placeholder, nil
 }
 
-func CurrentTime(volume VolumeInterface) (string, error) {
+func CurrentTime(volume template.VolumeInterface) (string, error) {
 	named := "CurrentTime"
 	placeholder := ":" + named
 	value := time.Now().Format("2006-01-02 15:04:05")
@@ -53,7 +53,7 @@ func CurrentTime(volume VolumeInterface) (string, error) {
 	return placeholder, nil
 }
 
-func PermanentTime(volume VolumeInterface) (string, error) {
+func PermanentTime(volume template.VolumeInterface) (string, error) {
 	named := "PermanentTime"
 	placeholder := ":" + named
 	value := "3000-12-31 23:59:59"
@@ -110,12 +110,7 @@ func (c *preComma) PreComma() string {
 	return out
 }
 
-type VolumeInterface interface {
-	SetValue(key string, value interface{})
-	GetValue(key string, value interface{}) (ok bool)
-}
-
-func In(volume VolumeInterface, data interface{}) (str string, err error) {
+func In(volume template.VolumeInterface, data interface{}) (str string, err error) {
 	placeholders := make([]string, 0)
 	inIndexKey := IN_INDEX
 	var inIndex int
@@ -157,21 +152,4 @@ func In(volume VolumeInterface, data interface{}) (str string, err error) {
 	str = strings.Join(placeholders, ",")
 	return str, nil
 
-}
-func strval(v interface{}) string {
-	switch v := v.(type) {
-	case string:
-		return v
-	case []byte:
-		return string(v)
-	case error:
-		return v.Error()
-	case fmt.Stringer:
-		return v.String()
-	}
-	b, err := json.Marshal(v)
-	if err == nil {
-		return string(b)
-	}
-	return fmt.Sprintf("%v", v)
 }

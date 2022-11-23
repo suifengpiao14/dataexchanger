@@ -1,4 +1,4 @@
-package sql
+package sqltpl
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 
 func TestNewNamedStatment(t *testing.T) {
 	s := "{{define \"GetQuestionByID\"}} select * from `t_eva_item_all` where  `Fid`=:QID  {{if .ClassID}} and  `Fitem_class_id` in ({{in . .ClassID}}) {{end}} and `Fvalid`=1 and `Fcheck_item`=1  order by Fid asc; {{end}}"
-	namedStatment := NewNamedStatment(s)
+	sqlTemplate := NewSQLTemplate().AddTpl("", s)
 	name := &tengo.String{
 		Value: "GetQuestionByID",
 	}
@@ -23,7 +23,7 @@ func TestNewNamedStatment(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	ret, err := namedStatment.Call(name, data)
+	ret, err := sqlTemplate.Call(name, data)
 	require.NoError(t, err)
 	fmt.Println(ret)
 }
@@ -32,8 +32,8 @@ func TestExecSQL(t *testing.T) {
 	tpl := "{{define \"GetQuestionByID\"}} select * from `t_eva_item_all` where  collector(`Fid`=:QID) `Fid`=:QID  {{if .ClassID}} and  `Fitem_class_id` in ({{in . .ClassID}}) {{end}} and `Fvalid`=1 and `Fcheck_item`=1  order by Fid asc; {{end}}"
 	script := tengo.NewScript([]byte(`
 	input["QID"]="3"
-	namedSQL:=namedStatment("GetQuestionByID",input)
-	output:=namedSQL2SQL(namedSQL)
+	sqlTplOut:=sqlTemplate("GetQuestionByID",input)
+	output:=sqlTemplateOut2SQL(sqlTplOut)
 `))
 	data, err := tengo.FromInterface(map[string]interface{}{
 		"QID":     "1",
@@ -43,10 +43,10 @@ func TestExecSQL(t *testing.T) {
 		panic(err)
 	}
 
-	namedStatment := NewNamedStatment(tpl)
+	sqlTemplate := NewSQLTemplate().AddTpl("", tpl).AddTpl("", `{{define "a"}} hello world{{end}}`)
 	script.SetImports(stdlib.GetModuleMap(stdlib.AllModuleNames()...))
-	script.Add("namedStatment", namedStatment)
-	script.Add("namedSQL2SQL", NamedSQL2SQL)
+	script.Add("sqlTemplate", sqlTemplate)
+	script.Add("sqlTemplateOut2SQL", SQLTemplateOut2SQL)
 	script.Add("input", &tengo.Map{})
 	scriptCompiled, err := script.Compile()
 	if err != nil {

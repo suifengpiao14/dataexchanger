@@ -1,16 +1,24 @@
-package sql
+package template
 
 import (
 	"reflect"
 	"strconv"
-	"strings"
 
 	"github.com/pkg/errors"
-	"github.com/tidwall/gjson"
+	"github.com/suifengpiao14/datacenter/util"
 )
+
+type VolumeInterface interface {
+	SetValue(key string, value interface{})
+	GetValue(key string, value interface{}) (ok bool)
+}
 
 // 私有定义，确保对volumeMap 的操作全部通过 get/set 函数实现
 type volumeMap map[string]interface{}
+
+func NewVolumeMap() *volumeMap {
+	return &volumeMap{}
+}
 
 func (v *volumeMap) init() {
 	if v == nil {
@@ -24,80 +32,18 @@ func (v *volumeMap) init() {
 
 func (v *volumeMap) SetValue(key string, value interface{}) {
 	v.init()
-	// todo 并发lock
 	(*v)[key] = value
 
 }
 
-func (v *volumeMap) GetValue(key string, value interface{}) bool {
+func (v *volumeMap) GetValue(key string, value interface{}) (ok bool) {
 	v.init()
-
-	tmp, ok := getValue(v, key)
+	tmp, ok := (*v)[key]
 	if !ok {
-		return false
+		return ok
 	}
 	ok = convertType(value, tmp)
 	return ok
-}
-
-func getValue(v *volumeMap, key string) (interface{}, bool) {
-	var mapKey string
-	var jsonKey string
-	var value interface{}
-	var ok bool
-	mapKey = key
-	for {
-		value, ok = (*v)[mapKey]
-		if ok {
-			break
-		}
-		lastIndex := strings.LastIndex(mapKey, ".")
-		if lastIndex > -1 {
-			mapKey = mapKey[:lastIndex]
-			continue
-		}
-		break
-	}
-	if mapKey == key {
-		return value, ok
-	}
-	// json key 获取值
-	jsonKey = key[len(mapKey)+1:]
-	jsonStr, ok := value.(string)
-	if !ok {
-		return nil, false
-	}
-	jsonValue, ok := GetValueFromJson(jsonStr, jsonKey)
-	return jsonValue, ok
-}
-
-func GetValueFromJson(jsonStr string, jsonKey string) (interface{}, bool) {
-	if jsonStr == "" {
-		return nil, false
-	}
-	if !gjson.Valid(jsonStr) {
-		err := errors.Errorf(`json str inValid %s`, jsonStr)
-		panic(err)
-	}
-	key := jsonKey
-	value := gjson.Result{}
-	for {
-		value = gjson.Get(jsonStr, key)
-		if value.Exists() {
-			break
-		}
-		lastIndex := strings.LastIndex(key, ".")
-		if lastIndex > -1 {
-			key = key[:lastIndex]
-			continue
-		}
-		break
-	}
-	if jsonKey == key {
-		return value.Value(), value.Exists()
-	}
-
-	return GetValueFromJson(value.Str, jsonKey[len(key)+1:])
 }
 
 func convertType(dst interface{}, src interface{}) bool {
@@ -117,7 +63,7 @@ func convertType(dst interface{}, src interface{}) bool {
 		rv.Set(realValue)
 		return true
 	}
-	srcStr := strval(src)
+	srcStr := util.ToString(src)
 	switch rvT.Kind() {
 	case reflect.Int:
 		srcInt, err := strconv.Atoi(srcStr)
@@ -156,7 +102,6 @@ func convertType(dst interface{}, src interface{}) bool {
 		return true
 
 	}
-
 	err := errors.Errorf("can not convert %v(%s) to %#v", src, rTmp.Type().String(), rvT.String())
 	panic(err)
 }
