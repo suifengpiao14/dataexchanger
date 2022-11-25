@@ -2,7 +2,6 @@ package db
 
 import (
 	"database/sql"
-	"encoding/json"
 	"reflect"
 	"strconv"
 	"strings"
@@ -37,7 +36,7 @@ type DBExecProvider struct {
 	dbOnce sync.Once
 }
 
-func (p *DBExecProvider) Exec(s string, data interface{}) (string, error) {
+func (p *DBExecProvider) Exec(s string, data interface{}) (interface{}, error) {
 	return dbProvider(p, s, data)
 }
 
@@ -80,7 +79,7 @@ func SQLType(sqls string) string {
 	return SQL_TYPE_OTHER
 }
 
-func dbProvider(p *DBExecProvider, sqls string, data interface{}) (out string, err error) {
+func dbProvider(p *DBExecProvider, sqls string, data interface{}) (out interface{}, err error) {
 	sqls = util.StandardizeSpaces(util.TrimSpaces(sqls)) // 格式化sql语句
 	sqlType := SQLType(sqls)
 	db := p.GetDb()
@@ -125,24 +124,17 @@ func dbProvider(p *DBExecProvider, sqls string, data interface{}) (out string, e
 			panic(err)
 		}
 	}()
-	allResult := make([][]map[string]string, 0)
+	allResult := make([][]map[string]interface{}, 0)
 	for {
-		records := make([]map[string]string, 0)
+		records := make([]map[string]interface{}, 0)
 		for rows.Next() {
 			var record = make(map[string]interface{})
-			var recordStr = make(map[string]string)
+
 			err := MapScan(*rows, record)
 			if err != nil {
 				return "", err
 			}
-			for k, v := range record {
-				if v == nil {
-					recordStr[k] = ""
-				} else {
-					recordStr[k] = util.ToString(v)
-				}
-			}
-			records = append(records, recordStr)
+			records = append(records, record)
 		}
 		allResult = append(allResult, records)
 		if !rows.NextResultSet() {
@@ -161,19 +153,9 @@ func dbProvider(p *DBExecProvider, sqls string, data interface{}) (out string, e
 				return val, nil // 只有一个值时，直接返回值本身
 			}
 		}
-		jsonByte, err := json.Marshal(result)
-		if err != nil {
-			return "", err
-		}
-		return string(jsonByte), nil
+		return result, nil
 	}
-
-	jsonByte, err := json.Marshal(allResult)
-	if err != nil {
-		return "", err
-	}
-	out = string(jsonByte)
-	return out, nil
+	return allResult, nil
 }
 
 //MapScan copy sqlx
