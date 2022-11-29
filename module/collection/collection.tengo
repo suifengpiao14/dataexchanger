@@ -77,10 +77,10 @@ records_orderBy:=func(records,fn){
 }
 
 export {
-	column:records_column,
-	index:records_index,
-	group:records_group,
-	map:records_map,
-	keyConvert:records_keyConvert,
-	orderBy:records_orderBy
+	Column:records_column,
+	Index:records_index,
+	Group:records_group,
+	Map:records_map,
+	KeyConvert:records_keyConvert,
+	OrderBy:records_orderBy
 }

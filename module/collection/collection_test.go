@@ -15,15 +15,15 @@ func TestRecord_map(t *testing.T) {
 		{"id":2,"name":"李四","age":20,"sex":"男"},
 		{"id":3,"name":"王五","age":18,"sex":"女"}
 		]
-		column:=collection.column(records,"sex","name")
-		index:=collection.index(records,"id")
-		map:=collection.map(records,func(record,i){
+		column:=collection.Column(records,"sex","name")
+		index:=collection.Index(records,"id")
+		map:=collection.Map(records,func(record,i){
 			record["status"]=1
 			return record
 		})
-		group:=collection.group(records,"sex")
-		keyConvert:=collection.keyConvert(records,{"id":"userId","name":"userName"})
-		orderBy:=collection.orderBy(records,func(r1,r2){
+		group:=collection.Group(records,"sex")
+		keyConvert:=collection.KeyConvert(records,{"id":"userId","name":"userName"})
+		orderBy:=collection.OrderBy(records,func(r1,r2){
 			return r1.id>r2.id
 		})
 `))

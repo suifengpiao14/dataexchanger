@@ -1,15 +1,20 @@
 package gsjson
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
+	"unsafe"
 
 	"github.com/d5/tengo/v2"
 	"github.com/pkg/errors"
+	"github.com/suifengpiao14/datacenter/util"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
+
+func bytesString(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
+}
 
 func init() {
 	//支持大小写转换
@@ -22,17 +27,24 @@ func init() {
 		}
 		return json
 	})
-	//支持二维数组转置
-	gjson.AddModifier("transpose", func(jsonStr, arg string) string {
-		out := ""
-		isArr := jsonStr[0] == '['
-		if isArr {
-			out = row2Column(jsonStr)
-		} else {
-			out = column2Row(jsonStr)
-		}
-		return out
-	})
+	gjson.AddModifier("combine", combine)
+
+	gjson.AddModifier("union", union)
+}
+
+var GSjon = map[string]tengo.Object{
+	"Get": &tengo.UserFunction{
+		Value: Get,
+	},
+	"Set": &tengo.UserFunction{
+		Value: Set,
+	},
+	"GetSet": &tengo.UserFunction{
+		Value: GetSet,
+	},
+	"Delete": &tengo.UserFunction{
+		Value: Delete,
+	},
 }
 
 func Get(args ...tengo.Object) (ret tengo.Object, err error) {
@@ -55,9 +67,10 @@ func Get(args ...tengo.Object) (ret tengo.Object, err error) {
 			Found:    args[1].TypeName(),
 		}
 	}
+	jsonStr = util.TrimSpaces(jsonStr)
+	path = util.TrimSpaces(path)
 	result := gjson.Get(jsonStr, path)
 	ret = &tengo.String{Value: result.String()}
-
 	return ret, nil
 }
 
@@ -92,172 +105,190 @@ func Set(args ...tengo.Object) (ret tengo.Object, err error) {
 	return ret, nil
 }
 
-// Merge 合并多个json
-func Merge(args ...tengo.Object) (ret tengo.Object, err error) {
-	argMapArr := make([]*tengo.Map, len(args))
-	var ok bool
-	for i, arg := range args {
-		argMapArr[i], ok = arg.(*tengo.Map)
-		if !ok {
-			return nil, tengo.ErrInvalidArgumentType{
-				Name:     fmt.Sprintf("gjson.Merge arg %d", i+1),
-				Expected: "map",
-				Found:    args[i].TypeName(),
-			}
-		}
-
-	}
-	var rentMap tengo.Map
-	for i, argMap := range argMapArr {
-		if i == 0 {
-			rentMap = *argMap
-			continue
-		}
-		for k, v := range argMap.Value {
-			rentMap.Value[k] = v
-		}
-
-	}
-
-	return &rentMap, err
-}
-
-// Merge 合并多个json
-func Union(args ...tengo.Object) (ret tengo.Object, err error) {
-	if len(args) != 3 {
+func GetSet(args ...tengo.Object) (ret tengo.Object, err error) {
+	if len(args) != 2 {
 		return nil, tengo.ErrWrongNumArguments
 	}
-	first, ok := tengo.ToString(args[0])
+	jsonStr, ok := tengo.ToString(args[0])
 	if !ok {
 		return nil, tengo.ErrInvalidArgumentType{
-			Name:     "gjson.get.arg1",
+			Name:     "gjson.GetSet.arg1",
 			Expected: "string",
 			Found:    args[0].TypeName(),
 		}
 	}
-	second, ok := tengo.ToString(args[1])
+	path, ok := tengo.ToString(args[1])
 	if !ok {
 		return nil, tengo.ErrInvalidArgumentType{
-			Name:     "gjson.get.arg2",
+			Name:     "gjson.GetSet.arg2",
 			Expected: "string",
 			Found:    args[1].TypeName(),
 		}
 	}
-	key, ok := tengo.ToString(args[2])
+	result := gjson.Parse(path).Array()
+	var out = ""
+	arrayKeys := map[string]struct{}{}
+	for _, keyRow := range result {
+		src := keyRow.Get("src").String()
+		dst := keyRow.Get("dst").String()
+		n1Index := strings.LastIndex(dst, "-1")
+		if n1Index > -1 {
+			parentKey := dst[:n1Index]
+			parentKey = strings.TrimRight(parentKey, ".#")
+			if parentKey[len(parentKey)-1] == ')' {
+				parentKey = fmt.Sprintf("%s#", parentKey)
+			}
+			arrayKeys[parentKey] = struct{}{}
+			dst = fmt.Sprintf("%s%s", dst[:n1Index-1], dst[n1Index+2:])
+		}
+
+		raw := gjson.Get(jsonStr, src).Raw
+		out, err = sjson.SetRaw(out, dst, raw)
+		if err != nil {
+			err = errors.WithMessage(err, "gsjson.GetSet")
+			return nil, err
+		}
+	}
+	for path := range arrayKeys {
+		qPath := fmt.Sprintf("%s|@group", path)
+		raw := gjson.Get(out, qPath).Raw
+		out, err = sjson.SetRaw(out, path, raw)
+		if err != nil {
+			err = errors.WithMessage(err, "gsjson.GetSet|@group")
+			return nil, err
+		}
+	}
+
+	ret = &tengo.String{Value: out}
+	return ret, nil
+}
+
+func Delete(args ...tengo.Object) (ret tengo.Object, err error) {
+	if len(args) != 2 {
+		return nil, tengo.ErrWrongNumArguments
+	}
+	jsonStr, ok := tengo.ToString(args[0])
 	if !ok {
 		return nil, tengo.ErrInvalidArgumentType{
-			Name:     "gjson.get.arg3",
+			Name:     "gjson.delete.arg1",
 			Expected: "string",
-			Found:    args[2].TypeName(),
+			Found:    args[0].TypeName(),
 		}
 	}
-	if first[0] != '[' || second[0] != '[' {
-		err = errors.Errorf("first and second arg must be object of array")
-		return nil, err
-	}
-	var firstArr []map[string]interface{}
-	err = json.Unmarshal([]byte(first), &firstArr)
-	if err != nil {
-		err = errors.WithMessage(err, "gsjson.union.first arg")
-		return nil, err
-	}
-	var secondArr []map[string]interface{}
-	err = json.Unmarshal([]byte(first), &secondArr)
-	if err != nil {
-		err = errors.WithMessage(err, "gsjson.union.second arg")
-		return nil, err
-	}
-	if len(firstArr) < 1 || len(secondArr) < 1 {
-		err = errors.Errorf("first and second  object of arr argument len must big than 1")
-		return nil, err
-	}
-
-	_, ok1 := firstArr[0][key]
-	_, ok2 := secondArr[0][key]
-	if !ok1 || !ok2 {
-		err = errors.Errorf("first and second  object of arr argument requie key:%s", key)
-		return nil, err
-	}
-
-	var secondMap = map[interface{}]map[string]interface{}{}
-	for _, row := range secondArr {
-		secondMap[row[key]] = row
-	}
-	var secondRowDefault = map[string]interface{}{}
-	for k := range secondArr[0] {
-		secondRowDefault[k] = nil
-	}
-
-	for index, row := range firstArr {
-		secondRow, ok := secondMap[row[key]]
-		if !ok {
-			secondRow = secondRowDefault
+	path, ok := tengo.ToString(args[1])
+	if !ok {
+		return nil, tengo.ErrInvalidArgumentType{
+			Name:     "gjson.delete.arg2",
+			Expected: "string",
+			Found:    args[1].TypeName(),
 		}
-		for k, v := range secondRow {
-			row[k] = v
-		}
-		firstArr[index] = row
 	}
-	b, err := json.Marshal(firstArr)
+	str, err := sjson.Delete(jsonStr, path)
 	if err != nil {
-		err = errors.WithMessage(err, "gsjon.union")
+		err = errors.WithMessage(err, "sjson.delete")
 		return nil, err
 	}
-	ret = &tengo.String{Value: string(b)}
-	return ret, err
+	ret = &tengo.String{Value: str}
+
+	return ret, nil
 }
 
-// column2Row 列数据(二维数组中一维为列对象，二维为值数组)转行数据(二维数组中，一维为行索引，二维为行对象) gjson 获取数据时，会将行数据，转换成列数据，此时需要调用该函数再转换为行数据
-func column2Row(jsonStr string) (out string) {
-	arr := make(map[string][]interface{}, 0)
-	err := json.Unmarshal([]byte(jsonStr), &arr)
-	if err != nil {
-		panic(err)
-	}
-	var outArr []map[string]interface{}
-	initOutArr := true
-	for key, column := range arr {
-		if initOutArr { //init array
-			outArr = make([]map[string]interface{}, len(column))
-			initOutArr = false
-		}
-
-		for i, val := range column {
-			if outArr[i] == nil { //init map
-				outArr[i] = make(map[string]interface{})
-			}
-			outArr[i][key] = val
+func combine(jsonStr, arg string) string {
+	res := gjson.Parse(jsonStr).Array()
+	var out []byte
+	out = append(out, '{')
+	var keys []gjson.Result
+	var values []gjson.Result
+	for i, value := range res {
+		switch i {
+		case 0:
+			keys = value.Array()
+		case 1:
+			values = value.Array()
 		}
 	}
-	b, err := json.Marshal(outArr)
-	if err != nil {
-		panic(err)
+	vlen := len(values)
+	var kvMap = map[string]bool{}
+	for k, v := range keys {
+		key := v.String()
+		if ok := kvMap[key]; ok {
+			continue
+		}
+		out = append(out, v.Raw...)
+		out = append(out, ':')
+		if k < vlen {
+			value := values[k]
+			out = append(out, value.Raw...)
+		} else {
+			out = append(out, '"', '"')
+		}
+		kvMap[key] = true
 	}
-	out = string(b)
-	return out
+	out = append(out, '}')
+	return bytesString(out)
 }
 
-// row2Column 行数据(二维数组中，一维为行索引，二维为行对象)转 列数据(二维数组中一维为列对象，二维为值数组) ，有时json数据的key和结构体的json key（结构体由第三方包定义，不可修改tag） 不一致，但是存在对应关系，需要构造结构体内json key数据，此时将行数据改成列数据，方便计算
-func row2Column(jsonStr string) (out string) {
-	arr := make([]map[string]interface{}, 0)
-	err := json.Unmarshal([]byte(jsonStr), &arr)
-	if err != nil {
-		panic(err)
+func union(jsonStr, arg string) string {
+	if arg == "" {
+		return jsonStr
 	}
-	outMap := make(map[string][]interface{}, 0)
-	arrLen := len(arr)
-	for i, row := range arr {
-		for key, val := range row {
-			if outMap[key] == nil {
-				outMap[key] = make([]interface{}, arrLen)
-			}
-			outMap[key][i] = val
+	res := gjson.Parse(jsonStr)
+	var firstPath string
+	var secondPath string
+	args := gjson.Parse(arg)
+	firstPath = args.Get("firstPath").String()
+	secondPath = args.Get("secondPath").String()
+
+	firstRowPath := firstPath
+	firstLastIndex := strings.LastIndex(firstRowPath, ".")
+	if firstLastIndex > -1 {
+		firstRowPath = strings.TrimRight(firstRowPath[:firstLastIndex], ".#")
+		if firstRowPath[len(firstRowPath)-1] == ')' {
+			firstRowPath = fmt.Sprintf("%s#", firstRowPath)
 		}
 	}
-	b, err := json.Marshal(outMap)
-	if err != nil {
-		panic(err)
+	firstMapPath := fmt.Sprintf("[%s,%s]|@combine", firstPath, firstRowPath)
+	firstMap := res.Get(firstMapPath).Map()
+	secondRowPath := secondPath
+	secondLastIndex := strings.LastIndex(secondRowPath, ".")
+	if secondLastIndex > -1 {
+		secondRowPath = strings.TrimRight(secondRowPath[:secondLastIndex], ".#")
+		if secondRowPath[len(secondRowPath)-1] == ')' {
+			secondRowPath = fmt.Sprintf("%s#", secondRowPath)
+		}
 	}
-	out = string(b)
-	return out
+	secondMapPath := fmt.Sprintf("[%s,%s]|@combine", secondPath, secondRowPath)
+	secondMap := res.Get(secondMapPath).Map()
+	var out []byte
+	out = append(out, '[')
+	i := 0
+	for k, firstV := range firstMap {
+		if i > 0 {
+			out = append(out, ',')
+		}
+		i++
+		row := firstV.Map()
+		secondV, ok := secondMap[k]
+		if ok {
+			for k, v := range secondV.Map() {
+				row[k] = v
+			}
+		}
+		out = append(out, '{')
+		j := 0
+		for k, v := range row {
+			if j > 0 {
+				out = append(out, ',')
+			}
+			j++
+			out = append(out, fmt.Sprintf(`"%s"`, k)...)
+			out = append(out, ':')
+			out = append(out, v.Raw...)
+
+		}
+		out = append(out, '}')
+	}
+	out = append(out, ']')
+	outStr := bytesString(out)
+	return outStr
 }
