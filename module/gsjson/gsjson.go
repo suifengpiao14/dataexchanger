@@ -29,7 +29,8 @@ func init() {
 	})
 	gjson.AddModifier("combine", combine)
 
-	gjson.AddModifier("union", union)
+	gjson.AddModifier("leftJoin", leftJoin)
+	gjson.AddModifier("index", index)
 }
 
 var GSjon = map[string]tengo.Object{
@@ -208,10 +209,10 @@ func combine(jsonStr, arg string) string {
 		}
 	}
 	vlen := len(values)
-	var kvMap = map[string]bool{}
+	var kvMap = map[string]struct{}{}
 	for k, v := range keys {
 		key := v.String()
-		if ok := kvMap[key]; ok {
+		if _, ok := kvMap[key]; ok {
 			continue
 		}
 		out = append(out, v.Raw...)
@@ -222,13 +223,13 @@ func combine(jsonStr, arg string) string {
 		} else {
 			out = append(out, '"', '"')
 		}
-		kvMap[key] = true
+		kvMap[key] = struct{}{}
 	}
 	out = append(out, '}')
 	return bytesString(out)
 }
 
-func union(jsonStr, arg string) string {
+func leftJoin(jsonStr, arg string) string {
 	if arg == "" {
 		return jsonStr
 	}
@@ -247,8 +248,9 @@ func union(jsonStr, arg string) string {
 			firstRowPath = fmt.Sprintf("%s#", firstRowPath)
 		}
 	}
-	firstMapPath := fmt.Sprintf("[%s,%s]|@combine", firstPath, firstRowPath)
-	firstMap := res.Get(firstMapPath).Map()
+	firstRef := fmt.Sprintf("[%s,%s]", firstPath, firstRowPath)
+	firstRefArr := res.Get(firstRef).Array()
+	indexArr, rowArr := firstRefArr[0].Array(), firstRefArr[1].Array()
 	secondRowPath := secondPath
 	secondLastIndex := strings.LastIndex(secondRowPath, ".")
 	if secondLastIndex > -1 {
@@ -259,20 +261,34 @@ func union(jsonStr, arg string) string {
 	}
 	secondMapPath := fmt.Sprintf("[%s,%s]|@combine", secondPath, secondRowPath)
 	secondMap := res.Get(secondMapPath).Map()
+
+	secondDefault := map[string]gjson.Result{}
+	for _, v := range secondMap {
+		for key, value := range v.Map() {
+			raw := `""`
+			if value.Type == gjson.Number {
+				raw = `0`
+			}
+			secondDefault[key] = gjson.Result{Type: value.Type, Str: `""`, Num: 0, Raw: raw}
+		}
+		break
+	}
+
 	var out []byte
 	out = append(out, '[')
-	i := 0
-	for k, firstV := range firstMap {
+
+	for i, index := range indexArr {
 		if i > 0 {
 			out = append(out, ',')
 		}
-		i++
-		row := firstV.Map()
-		secondV, ok := secondMap[k]
+		row := rowArr[i].Map()
+		secondV, ok := secondMap[index.String()]
+		secondVMap := secondDefault
 		if ok {
-			for k, v := range secondV.Map() {
-				row[k] = v
-			}
+			secondVMap = secondV.Map()
+		}
+		for k, v := range secondVMap {
+			row[k] = v
 		}
 		out = append(out, '{')
 		j := 0
@@ -291,4 +307,154 @@ func union(jsonStr, arg string) string {
 	out = append(out, ']')
 	outStr := bytesString(out)
 	return outStr
+}
+
+func index(jsonStr, arg string) string {
+	if arg == "" {
+		return jsonStr
+	}
+	res := gjson.Parse(jsonStr)
+	rowPath := getParentPath(arg)
+	refPath := fmt.Sprintf("[%s,%s]", arg, rowPath)
+	refArr := res.Get(refPath).Array()
+	key, rowArr := refArr[0], refArr[1].Array()
+	group := key.Get("@this|@group")
+	keyArr := group.Array()
+	indexMapArr := make(map[string][]gjson.Result)
+
+	for i, kv := range keyArr {
+		key := kv.String()
+		if _, ok := indexMapArr[key]; !ok {
+			indexMapArr[key] = make([]gjson.Result, 0)
+		}
+		indexMapArr[key] = append(indexMapArr[key], rowArr[i])
+	}
+
+	var out []byte
+	out = append(out, '{')
+	i := 0
+	for k, arr := range indexMapArr {
+		if i > 0 {
+			out = append(out, ',')
+		}
+		i++
+		out = append(out, fmt.Sprintf(`"%s"`, k)...)
+		out = append(out, ':')
+		out = append(out, '[')
+		for j, row := range arr {
+			if j > 0 {
+				out = append(out, ',')
+			}
+			out = append(out, row.Raw...)
+		}
+		out = append(out, ']')
+	}
+	out = append(out, '}')
+	outStr := bytesString(out)
+	return outStr
+}
+
+func getParentPath(path string) string {
+	path = util.TrimSpaces(path)
+	if path[0] == '[' || path[0] == '{' {
+		subs, newPath, ok := parseSubSelectors(path)
+		if !ok {
+			return path
+		}
+		if len(subs) == 0 {
+			return newPath // todo 验证返回内容
+		}
+		path = subs[0].path // 取第一个路径计算父路径
+	}
+	path = nameOfPrefix(path)
+	path = strings.Trim(path, ".#")
+	if path == "" {
+		path = "@this"
+	}
+	return path
+}
+
+// nameOfPrefix returns the name of the path except the last component
+func nameOfPrefix(path string) string {
+	for i := len(path) - 1; i >= 0; i-- {
+		if path[i] == '|' || path[i] == '.' {
+			if i > 0 {
+				if path[i-1] == '\\' {
+					continue
+				}
+			}
+			return path[:i+1]
+		}
+	}
+	return path
+}
+
+type subSelector struct {
+	name string
+	path string
+}
+
+// copy from gjson
+// parseSubSelectors returns the subselectors belonging to a '[path1,path2]' or
+// '{"field1":path1,"field2":path2}' type subSelection. It's expected that the
+// first character in path is either '[' or '{', and has already been checked
+// prior to calling this function.
+func parseSubSelectors(path string) (sels []subSelector, out string, ok bool) {
+	modifier := 0
+	depth := 1
+	colon := 0
+	start := 1
+	i := 1
+	pushSel := func() {
+		var sel subSelector
+		if colon == 0 {
+			sel.path = path[start:i]
+		} else {
+			sel.name = path[start:colon]
+			sel.path = path[colon+1 : i]
+		}
+		sels = append(sels, sel)
+		colon = 0
+		modifier = 0
+		start = i + 1
+	}
+	for ; i < len(path); i++ {
+		switch path[i] {
+		case '\\':
+			i++
+		case '@':
+			if modifier == 0 && i > 0 && (path[i-1] == '.' || path[i-1] == '|') {
+				modifier = i
+			}
+		case ':':
+			if modifier == 0 && colon == 0 && depth == 1 {
+				colon = i
+			}
+		case ',':
+			if depth == 1 {
+				pushSel()
+			}
+		case '"':
+			i++
+		loop:
+			for ; i < len(path); i++ {
+				switch path[i] {
+				case '\\':
+					i++
+				case '"':
+					break loop
+				}
+			}
+		case '[', '(', '{':
+			depth++
+		case ']', ')', '}':
+			depth--
+			if depth == 0 {
+				pushSel()
+				path = path[i+1:]
+				return sels, path, true
+			}
+		}
+	}
+	return
 }
