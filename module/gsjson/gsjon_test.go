@@ -65,7 +65,7 @@ func TestLeftJoin(t *testing.T) {
 	s := tengo.NewScript([]byte(`
 	fmt:=import("fmt")
 	jstr:=fmt.sprintf("[%s,%s]",jsonstr,jsonstr2)
-	path:="@this|@leftJoin:{\"firstPath\":\"@this.0.#.classId\",\"secondPath\":\"@this.1.#.classId\"}"
+	path:="@leftJoin:[@this.0.#.classId,@this.1.#.classId]"
 	out:=GSjson.Get(jstr,path)
 	`))
 	s.EnableFileImport(true)
@@ -195,7 +195,7 @@ func TestIndex(t *testing.T) {
 	`
 	jsonObj := &tengo.String{Value: jsonstr}
 	pathObj := &tengo.String{
-		Value: `@this|@index:[#.classId,#.questionId]`,
+		Value: `@this|@index:#.classId`,
 	}
 	s := tengo.NewScript([]byte(`
 	fmt:=import("fmt")

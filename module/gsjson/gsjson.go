@@ -1,6 +1,7 @@
 package gsjson
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"unsafe"
@@ -233,35 +234,22 @@ func leftJoin(jsonStr, arg string) string {
 	if arg == "" {
 		return jsonStr
 	}
-	res := gjson.Parse(jsonStr)
-	var firstPath string
-	var secondPath string
-	args := gjson.Parse(arg)
-	firstPath = args.Get("firstPath").String()
-	secondPath = args.Get("secondPath").String()
-
-	firstRowPath := firstPath
-	firstLastIndex := strings.LastIndex(firstRowPath, ".")
-	if firstLastIndex > -1 {
-		firstRowPath = strings.TrimRight(firstRowPath[:firstLastIndex], ".#")
-		if firstRowPath[len(firstRowPath)-1] == ')' {
-			firstRowPath = fmt.Sprintf("%s#", firstRowPath)
-		}
+	if arg[0] != '[' && arg[0] != '{' {
+		arg = fmt.Sprintf("[%s]", arg)
 	}
+	sels, _, ok := parseSubSelectors(arg)
+	if !ok {
+		return jsonStr
+	}
+	firstPath, secondPath := sels[0].path, sels[1].path
+	res := gjson.Parse(jsonStr)
+	firstRowPath := getParentPath(firstPath)
+	secondRowPath := getParentPath(secondPath)
 	firstRef := fmt.Sprintf("[%s,%s]", firstPath, firstRowPath)
 	firstRefArr := res.Get(firstRef).Array()
 	indexArr, rowArr := firstRefArr[0].Array(), firstRefArr[1].Array()
-	secondRowPath := secondPath
-	secondLastIndex := strings.LastIndex(secondRowPath, ".")
-	if secondLastIndex > -1 {
-		secondRowPath = strings.TrimRight(secondRowPath[:secondLastIndex], ".#")
-		if secondRowPath[len(secondRowPath)-1] == ')' {
-			secondRowPath = fmt.Sprintf("%s#", secondRowPath)
-		}
-	}
 	secondMapPath := fmt.Sprintf("[%s,%s]|@combine", secondPath, secondRowPath)
 	secondMap := res.Get(secondMapPath).Map()
-
 	secondDefault := map[string]gjson.Result{}
 	for _, v := range secondMap {
 		for key, value := range v.Map() {
@@ -314,20 +302,20 @@ func index(jsonStr, arg string) string {
 		return jsonStr
 	}
 	res := gjson.Parse(jsonStr)
+	if arg[0] != '[' && arg[0] != '{' {
+		arg = fmt.Sprintf(`[%s]`, arg) // 统一使用复合索引方式处理
+	}
 	rowPath := getParentPath(arg)
-	refPath := fmt.Sprintf("[%s,%s]", arg, rowPath)
+	refPath := fmt.Sprintf("[%s|@values,%s]", arg, rowPath)
 	refArr := res.Get(refPath).Array()
-	key, rowArr := refArr[0], refArr[1].Array()
-	group := key.Get("@this|@group")
-	keyArr := group.Array()
+	keyArr, rowArr := refArr[0].Array(), refArr[1].Array()
 	indexMapArr := make(map[string][]gjson.Result)
-
-	for i, kv := range keyArr {
-		key := kv.String()
-		if _, ok := indexMapArr[key]; !ok {
-			indexMapArr[key] = make([]gjson.Result, 0)
+	indexArr := concatColumn(keyArr...)
+	for i, indexKey := range indexArr {
+		if _, ok := indexMapArr[indexKey]; !ok {
+			indexMapArr[indexKey] = make([]gjson.Result, 0)
 		}
-		indexMapArr[key] = append(indexMapArr[key], rowArr[i])
+		indexMapArr[indexKey] = append(indexMapArr[indexKey], rowArr[i])
 	}
 
 	var out []byte
@@ -352,6 +340,38 @@ func index(jsonStr, arg string) string {
 	out = append(out, '}')
 	outStr := bytesString(out)
 	return outStr
+}
+
+func concat(jsonStr, arg string) string {
+	resArr := gjson.Parse(jsonStr).Array()
+	arr := concatColumn(resArr...)
+	b, err := json.Marshal(arr)
+	if err != nil {
+		err = errors.WithMessage(err, "gsjson.concat")
+		panic(err)
+	}
+	out := string(b)
+	return out
+
+}
+
+//concatColumn 合并一行中的所有数据，复合索引使用
+func concatColumn(columns ...gjson.Result) (out []string) {
+	out = make([]string, 0)
+	clen := len(columns)
+	if clen == 0 {
+		return out
+	}
+	rlen := len(columns[0].Array())
+	for i := 0; i < rlen; i++ {
+		row := make([]string, 0)
+		for j := 0; j < clen; j++ {
+			column := columns[j].Array()
+			row = append(row, column[i].String())
+		}
+		out = append(out, strings.Join(row, "-"))
+	}
+	return out
 }
 
 func getParentPath(path string) string {
