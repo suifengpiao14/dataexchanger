@@ -54,10 +54,10 @@ func TestCombine(t *testing.T) {
 
 func TestLeftJoin(t *testing.T) {
 	jsonstr := `
-	[{"questionId":"12057","questionName":"全新机(包装盒无破损,配件齐全且原装,可无原 机膜和卡针)","classId":"1"},{"questionId":"12097","questionName":"机身弯曲情况","classId":"3"},{"questionId":"12066","questionName":"屏幕外观","classId":"3"},{"questionId":"12077","questionName":"屏幕显示","classId":"3"},{"questionId":"12088","questionName":"电池健康效率","classId":"3"},{"questionId":"12100","questionName":"维修情况","classId":"3"},{"questionId":"12106","questionName":"零件维修情况","classId":"3"},{"questionId":"12115","questionName":"受潮状况","classId":"3"},{"questionId":"12119","questionName":"开机状态","classId":"3"},{"questionId":"9368","questionName":"是否全新","classId":"3"}]
+	[{"questionId":"12057","questionName":"全新机(包装盒无破损,配件齐全且原装,可无原 机膜和卡针)","classId":"1","type":1},{"questionId":"12097","questionName":"机身弯曲情况","classId":"3","type":3},{"questionId":"12066","questionName":"屏幕外观","classId":"3","type":3},{"questionId":"12077","questionName":"屏幕显示","classId":"3","type":2},{"questionId":"12088","questionName":"电池健康效率","classId":"3","type":2},{"questionId":"12100","questionName":"维修情况","classId":"3","type":2},{"questionId":"12106","questionName":"零件维修情况","classId":"3","type":3},{"questionId":"12115","questionName":"受潮状况","classId":"3","type":2},{"questionId":"12119","questionName":"开机状态","classId":"3","type":2},{"questionId":"9368","questionName":"是否全新","classId":"3","type":4}]
 	`
 	jsonstr2 := `
-	[{"classId":"1","className":"手机"},{"classId":"3","className":"平板"}]
+	[{"classId":"1","className":"手机","type":1},{"classId":"3","className":"平板","type":2},,{"classId":"3","className":"平板","type":3}]
 	`
 	jsonObj := &tengo.String{Value: jsonstr}
 	jsonObj2 := &tengo.String{Value: jsonstr2}
@@ -65,7 +65,9 @@ func TestLeftJoin(t *testing.T) {
 	s := tengo.NewScript([]byte(`
 	fmt:=import("fmt")
 	jstr:=fmt.sprintf("[%s,%s]",jsonstr,jsonstr2)
-	path:="@leftJoin:[@this.0.#.classId,@this.1.#.classId]"
+	path1:="@leftJoin:[@this.0.#.classId,@this.1.#.classId]"
+	path:="@leftJoin:[[@this.0.#.classId,@this.0.#.type],[@this.1.#.classId,@this.1.#.type]]"
+	out1:=GSjson.Get(jstr,path1)
 	out:=GSjson.Get(jstr,path)
 	`))
 	s.EnableFileImport(true)
@@ -95,7 +97,7 @@ func TestLeftJoin(t *testing.T) {
 		return
 	}
 
-	v := c.Get("out")
+	v := c.Get("out1")
 	fmt.Println(v)
 
 }

@@ -17,6 +17,29 @@ func bytesString(b []byte) string {
 	return *(*string)(unsafe.Pointer(&b))
 }
 
+// unwrap removes the '[]' or '{}' characters around json
+func unwrap(json string) string {
+	json = trim(json)
+	if len(json) >= 2 && (json[0] == '[' || json[0] == '{') {
+		json = json[1 : len(json)-1]
+	}
+	return json
+}
+
+func trim(s string) string {
+left:
+	if len(s) > 0 && s[0] <= ' ' {
+		s = s[1:]
+		goto left
+	}
+right:
+	if len(s) > 0 && s[len(s)-1] <= ' ' {
+		s = s[:len(s)-1]
+		goto right
+	}
+	return s
+}
+
 func init() {
 	//支持大小写转换
 	gjson.AddModifier("case", func(json, arg string) string {
@@ -32,6 +55,7 @@ func init() {
 
 	gjson.AddModifier("leftJoin", leftJoin)
 	gjson.AddModifier("index", index)
+	gjson.AddModifier("concat", concat) //将二维数组按行合并成一维数组,可用于多列索引
 }
 
 var GSjon = map[string]tengo.Object{
@@ -241,14 +265,15 @@ func leftJoin(jsonStr, arg string) string {
 	if !ok {
 		return jsonStr
 	}
+	//todo 多于2个合并,需要从后往前合并,保证上次合并后对剩余的路径不影响
 	firstPath, secondPath := sels[0].path, sels[1].path
 	res := gjson.Parse(jsonStr)
 	firstRowPath := getParentPath(firstPath)
 	secondRowPath := getParentPath(secondPath)
-	firstRef := fmt.Sprintf("[%s,%s]", firstPath, firstRowPath)
+	firstRef := fmt.Sprintf("[[%s]|@concat,%s]", unwrap(firstPath), firstRowPath)
 	firstRefArr := res.Get(firstRef).Array()
 	indexArr, rowArr := firstRefArr[0].Array(), firstRefArr[1].Array()
-	secondMapPath := fmt.Sprintf("[%s,%s]|@combine", secondPath, secondRowPath)
+	secondMapPath := fmt.Sprintf("[[%s]|@concat,%s]|@combine", unwrap(secondPath), secondRowPath)
 	secondMap := res.Get(secondMapPath).Map()
 	secondDefault := map[string]gjson.Result{}
 	for _, v := range secondMap {
@@ -276,6 +301,9 @@ func leftJoin(jsonStr, arg string) string {
 			secondVMap = secondV.Map()
 		}
 		for k, v := range secondVMap {
+			if _, ok := row[k]; ok {
+				k = fmt.Sprintf("%s1", k)
+			}
 			row[k] = v
 		}
 		out = append(out, '{')
@@ -310,7 +338,7 @@ func index(jsonStr, arg string) string {
 	refArr := res.Get(refPath).Array()
 	keyArr, rowArr := refArr[0].Array(), refArr[1].Array()
 	indexMapArr := make(map[string][]gjson.Result)
-	indexArr := concatColumn(keyArr...)
+	indexArr := concatColumn("-", keyArr...)
 	for i, indexKey := range indexArr {
 		if _, ok := indexMapArr[indexKey]; !ok {
 			indexMapArr[indexKey] = make([]gjson.Result, 0)
@@ -344,7 +372,11 @@ func index(jsonStr, arg string) string {
 
 func concat(jsonStr, arg string) string {
 	resArr := gjson.Parse(jsonStr).Array()
-	arr := concatColumn(resArr...)
+	sep := "-"
+	if arg != "" {
+		sep = arg
+	}
+	arr := concatColumn(sep, resArr...)
 	b, err := json.Marshal(arr)
 	if err != nil {
 		err = errors.WithMessage(err, "gsjson.concat")
@@ -355,8 +387,8 @@ func concat(jsonStr, arg string) string {
 
 }
 
-//concatColumn 合并一行中的所有数据，复合索引使用
-func concatColumn(columns ...gjson.Result) (out []string) {
+// concatColumn 合并一行中的所有数据，复合索引使用
+func concatColumn(sep string, columns ...gjson.Result) (out []string) {
 	out = make([]string, 0)
 	clen := len(columns)
 	if clen == 0 {
@@ -369,7 +401,7 @@ func concatColumn(columns ...gjson.Result) (out []string) {
 			column := columns[j].Array()
 			row = append(row, column[i].String())
 		}
-		out = append(out, strings.Join(row, "-"))
+		out = append(out, strings.Join(row, sep))
 	}
 	return out
 }
