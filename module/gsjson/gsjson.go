@@ -51,6 +51,7 @@ func init() {
 		}
 		return json
 	})
+	gjson.AddModifier("tonum", tonum) // 列转换为数字,可用于字符串数字排序
 	gjson.AddModifier("combine", combine)
 
 	gjson.AddModifier("leftJoin", leftJoin)
@@ -398,6 +399,17 @@ func index(jsonStr, arg string) string {
 	out = append(out, '}')
 	outStr := bytesString(out)
 	return outStr
+}
+
+func tonum(json string, arg string) (num string) {
+
+	num = strings.Trim(json, `'"`)
+	return num
+}
+
+func orderBy(json string, arg string) (num string) {
+	num = strings.Trim(json, `'"`)
+	return num
 }
 
 func concat(jsonStr, arg string) string {

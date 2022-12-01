@@ -241,3 +241,43 @@ func TestIndex(t *testing.T) {
 	v := c.Get("out")
 	fmt.Println(v)
 }
+
+func TestTonum(t *testing.T) {
+	jsonstr := `
+	[{"questionId":"12057","questionName":"全新机(包装盒无破损,配件齐全且原装,可无原 机膜和卡针)","classId":"1","type":1},{"questionId":"12097","questionName":"机身弯曲情况","classId":"3","type":3},{"questionId":"12066","questionName":"屏幕外观","classId":"3","type":3},{"questionId":"12077","questionName":"屏幕显示","classId":"3","type":2},{"questionId":"12088","questionName":"电池健康效率","classId":"3","type":2},{"questionId":"12100","questionName":"维修情况","classId":"3","type":2},{"questionId":"12106","questionName":"零件维修情况","classId":"3","type":3},{"questionId":"12115","questionName":"受潮状况","classId":"3","type":2},{"questionId":"12119","questionName":"开机状态","classId":"3","type":2},{"questionId":"9368","questionName":"是否全新","classId":"3","type":4}]
+	`
+
+	jsonObj := &tengo.String{Value: jsonstr}
+
+	s := tengo.NewScript([]byte(`
+	fmt:=import("fmt")
+	path:="@this.#.questionId.@tonum"
+	out:=GSjson.Get(jsonstr,path)
+	`))
+	s.EnableFileImport(true)
+	s.SetImports(stdlib.GetModuleMap(stdlib.AllModuleNames()...))
+	err := s.Add("GSjson", GSjon)
+	if err != nil {
+		require.NoError(t, err)
+		return
+	}
+	if err = s.Add("jsonstr", jsonObj); err != nil {
+		require.NoError(t, err)
+		return
+	}
+
+	c, err := s.Compile()
+	if err != nil {
+		require.NoError(t, err)
+		return
+	}
+
+	if err := c.Run(); err != nil {
+		require.NoError(t, err)
+		return
+	}
+
+	v := c.Get("out")
+	fmt.Println(v)
+
+}
