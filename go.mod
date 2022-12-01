@@ -4,7 +4,6 @@ go 1.18
 
 require (
 	github.com/Masterminds/sprig/v3 v3.2.2
-	github.com/d5/tengo v1.24.8
 	github.com/d5/tengo/v2 v2.13.0
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/jmoiron/sqlx v1.3.5
