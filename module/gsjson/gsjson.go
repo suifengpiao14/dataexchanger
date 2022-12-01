@@ -261,19 +261,49 @@ func leftJoin(jsonStr, arg string) string {
 	if arg[0] != '[' && arg[0] != '{' {
 		arg = fmt.Sprintf("[%s]", arg)
 	}
-	sels, _, ok := parseSubSelectors(arg)
+	var container = jsonStr
+	var sels []subSelector
+	var selsLen = 0
+	var err error
+	ok := false
+	sels, _, ok = parseSubSelectors(arg)
 	if !ok {
+		return container
+	}
+	selsLen = len(sels)
+	if selsLen < 2 {
 		return jsonStr
 	}
-	//todo 多于2个合并,需要从后往前合并,保证上次合并后对剩余的路径不影响
-	firstPath, secondPath := sels[0].path, sels[1].path
+
+	if selsLen%2 != 0 {
+		err = errors.Errorf("leftJoin:The path contained in the parameter must be an even number,got:%s", arg)
+		panic(err)
+	}
+	for i := len(sels) - 1; i >= 0; i = i - 2 {
+		left := sels[i-1]
+		right := sels[i]
+		sub := leftJoin2Path(container, left.path, right.path)
+		leftRowGetPath := getParentPath(left.path)
+		leftRowSetPath := nameOfLast(leftRowGetPath) // 获取数组下标
+		container, err = sjson.SetRaw(container, leftRowSetPath, sub)
+		if err != nil {
+			err = errors.WithMessage(err, "leftJoin:")
+			panic(err)
+		}
+	}
+	out := gjson.Get(container, "@this.0").String() // 返回数组的第一个
+	return out
+
+}
+
+func leftJoin2Path(jsonStr, leftPath, rightPath string) string { //合并2个元素
 	res := gjson.Parse(jsonStr)
-	firstRowPath := getParentPath(firstPath)
-	secondRowPath := getParentPath(secondPath)
-	firstRef := fmt.Sprintf("[[%s]|@concat,%s]", unwrap(firstPath), firstRowPath)
+	firstRowPath := getParentPath(leftPath)
+	secondRowPath := getParentPath(rightPath)
+	firstRef := fmt.Sprintf("[[%s]|@concat,%s]", unwrap(leftPath), firstRowPath)
 	firstRefArr := res.Get(firstRef).Array()
 	indexArr, rowArr := firstRefArr[0].Array(), firstRefArr[1].Array()
-	secondMapPath := fmt.Sprintf("[[%s]|@concat,%s]|@combine", unwrap(secondPath), secondRowPath)
+	secondMapPath := fmt.Sprintf("[[%s]|@concat,%s]|@combine", unwrap(rightPath), secondRowPath)
 	secondMap := res.Get(secondMapPath).Map()
 	secondDefault := map[string]gjson.Result{}
 	for _, v := range secondMap {
@@ -422,6 +452,21 @@ func getParentPath(path string) string {
 	path = strings.Trim(path, ".#")
 	if path == "" {
 		path = "@this"
+	}
+	return path
+}
+
+// nameOfLast returns the name of the last component
+func nameOfLast(path string) string {
+	for i := len(path) - 1; i >= 0; i-- {
+		if path[i] == '|' || path[i] == '.' {
+			if i > 0 {
+				if path[i-1] == '\\' {
+					continue
+				}
+			}
+			return path[i+1:]
+		}
 	}
 	return path
 }
