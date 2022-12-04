@@ -3,7 +3,9 @@ package db
 import (
 	"github.com/d5/tengo/v2"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
+	gormLogger "gorm.io/gorm/logger"
 )
 
 type ExecSQL struct {
@@ -41,30 +43,20 @@ func (db *ExecSQL) Call(args ...tengo.Object) (tplOut tengo.Object, err error) {
 		}
 	}
 
-	var data interface{}
 	if argLen == 2 {
-		data = tengo.ToInterface(args[1])
+		data := tengo.ToInterface(args[1])
+		statment, arguments, err := sqlx.Named(sql, data)
+		if err != nil {
+			err = errors.WithStack(err)
+			return nil, err
+		}
+		sql = gormLogger.ExplainSQL(statment, nil, `'`, arguments...)
+
 	}
-	out, err := db.provider.Exec(sql, data)
+	out, err := db.provider.Exec(sql)
 	if err != nil {
 		return tengo.UndefinedValue, err
 	}
-	switch records := out.(type) {
-	case []map[string]interface{}:
-		arrMap := &tengo.Array{
-			Value: make([]tengo.Object, 0),
-		}
-		for _, record := range records {
-			mapStr, _ := tengo.FromInterface(record)
-			arrMap.Value = append(arrMap.Value, mapStr)
-		}
-		return arrMap, nil
-	default:
-		tplOut, err = tengo.FromInterface(out)
-		if err != nil {
-			err = errors.WithMessage(err, "get db result")
-			return nil, err
-		}
-	}
+	tplOut = &tengo.String{Value: out}
 	return tplOut, nil
 }

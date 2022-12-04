@@ -66,6 +66,9 @@ var GSjon = map[string]tengo.Object{
 	"Set": &tengo.UserFunction{
 		Value: Set,
 	},
+	"SetRaw": &tengo.UserFunction{
+		Value: SetRaw,
+	},
 	"GetSet": &tengo.UserFunction{
 		Value: GetSet,
 	},
@@ -125,6 +128,43 @@ func Set(args ...tengo.Object) (ret tengo.Object, err error) {
 	str, err := sjson.Set(jsonStr, path, value)
 	if err != nil {
 		err = errors.WithMessage(err, "sjson.set")
+		return nil, err
+	}
+	ret = &tengo.String{Value: str}
+
+	return ret, nil
+}
+func SetRaw(args ...tengo.Object) (ret tengo.Object, err error) {
+	if len(args) != 3 {
+		return nil, tengo.ErrWrongNumArguments
+	}
+	jsonStr, ok := tengo.ToString(args[0])
+	if !ok {
+		return nil, tengo.ErrInvalidArgumentType{
+			Name:     "gjson.get.arg1",
+			Expected: "string",
+			Found:    args[0].TypeName(),
+		}
+	}
+	path, ok := tengo.ToString(args[1])
+	if !ok {
+		return nil, tengo.ErrInvalidArgumentType{
+			Name:     "gjson.get.arg2",
+			Expected: "string",
+			Found:    args[1].TypeName(),
+		}
+	}
+	value, ok := tengo.ToString(args[2])
+	if !ok {
+		return nil, tengo.ErrInvalidArgumentType{
+			Name:     "gjson.get.arg3",
+			Expected: "string",
+			Found:    args[2].TypeName(),
+		}
+	}
+	str, err := sjson.SetRaw(jsonStr, path, value)
+	if err != nil {
+		err = errors.WithMessage(err, "sjson.setRaw")
 		return nil, err
 	}
 	ret = &tengo.String{Value: str}

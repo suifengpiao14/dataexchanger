@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"text/template"
 )
 
 func StandardizeSpaces(s string) string {
@@ -15,7 +16,7 @@ func TrimSpaces(s string) string {
 	return strings.Trim(s, "\r\n\t\v\f ")
 }
 
-//ToString 转字符串
+// ToString 转字符串
 func ToString(v interface{}) string {
 	switch v := v.(type) {
 	case string:
@@ -32,4 +33,15 @@ func ToString(v interface{}) string {
 		return string(b)
 	}
 	return fmt.Sprintf("%v", v)
+}
+
+func GetTemplateNames(t *template.Template) []string {
+	out := make([]string, 0)
+	for _, tpl := range t.Templates() {
+		name := tpl.Name()
+		if name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
 }

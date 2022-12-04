@@ -2,13 +2,13 @@ package db
 
 import (
 	"database/sql"
-	"reflect"
+	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
 	"github.com/suifengpiao14/datacenter/module/template"
 	"github.com/suifengpiao14/datacenter/util"
@@ -36,8 +36,8 @@ type DBExecProvider struct {
 	dbOnce sync.Once
 }
 
-func (p *DBExecProvider) Exec(s string, data interface{}) (interface{}, error) {
-	return dbProvider(p, s, data)
+func (p *DBExecProvider) Exec(s string) (string, error) {
+	return dbProvider(p, s)
 }
 
 func (p *DBExecProvider) GetSource() (source interface{}) {
@@ -63,7 +63,7 @@ func (p *DBExecProvider) GetDb() *sql.DB {
 	return p.db
 }
 
-//SQLType 判断 sql  属于那种类型
+// SQLType 判断 sql  属于那种类型
 func SQLType(sqls string) string {
 	sqlArr := strings.Split(sqls, template.EOF)
 	selectLen := len(SQL_TYPE_SELECT)
@@ -78,32 +78,12 @@ func SQLType(sqls string) string {
 	}
 	return SQL_TYPE_OTHER
 }
-
-func dbProvider(p *DBExecProvider, sqls string, data interface{}) (out interface{}, err error) {
+func dbProvider(p *DBExecProvider, sqls string) (string, error) {
 	sqls = util.StandardizeSpaces(util.TrimSpaces(sqls)) // 格式化sql语句
 	sqlType := SQLType(sqls)
 	db := p.GetDb()
-	var args []interface{}
-	if data != nil { // todo 兼容数组
-		rv := reflect.Indirect(reflect.ValueOf(data))
-		rvK := rv.Kind()
-		if rvK == reflect.Array || rvK == reflect.Slice {
-			var ok bool
-			args, ok = data.([]interface{})
-			if !ok {
-				args = *(data.(*[]interface{}))
-			}
-		} else {
-			sqls, args, err = sqlx.Named(sqls, data)
-			if err != nil {
-				err = errors.WithStack(err)
-				return "", err
-			}
-		}
-	}
-
 	if sqlType != SQL_TYPE_SELECT {
-		res, err := db.Exec(sqls, args...)
+		res, err := db.Exec(sqls)
 		if err != nil {
 			return "", err
 		}
@@ -114,7 +94,7 @@ func dbProvider(p *DBExecProvider, sqls string, data interface{}) (out interface
 		rowsAffected, _ := res.RowsAffected()
 		return strconv.FormatInt(rowsAffected, 10), nil
 	}
-	rows, err := db.Query(sqls, args...)
+	rows, err := db.Query(sqls)
 	if err != nil {
 		return "", err
 	}
@@ -124,17 +104,24 @@ func dbProvider(p *DBExecProvider, sqls string, data interface{}) (out interface
 			panic(err)
 		}
 	}()
-	allResult := make([][]map[string]interface{}, 0)
+	allResult := make([][]map[string]string, 0)
 	for {
-		records := make([]map[string]interface{}, 0)
+		records := make([]map[string]string, 0)
 		for rows.Next() {
 			var record = make(map[string]interface{})
-
+			var recordStr = make(map[string]string)
 			err := MapScan(*rows, record)
 			if err != nil {
 				return "", err
 			}
-			records = append(records, record)
+			for k, v := range record {
+				if v == nil {
+					recordStr[k] = ""
+				} else {
+					recordStr[k] = fmt.Sprintf("%s", v)
+				}
+			}
+			records = append(records, recordStr)
 		}
 		allResult = append(allResult, records)
 		if !rows.NextResultSet() {
@@ -153,12 +140,22 @@ func dbProvider(p *DBExecProvider, sqls string, data interface{}) (out interface
 				return val, nil // 只有一个值时，直接返回值本身
 			}
 		}
-		return result, nil
+		jsonByte, err := json.Marshal(result)
+		if err != nil {
+			return "", err
+		}
+		return string(jsonByte), nil
 	}
-	return allResult, nil
+
+	jsonByte, err := json.Marshal(allResult)
+	if err != nil {
+		return "", err
+	}
+	out := string(jsonByte)
+	return out, nil
 }
 
-//MapScan copy sqlx
+// MapScan copy sqlx
 func MapScan(r sql.Rows, dest map[string]interface{}) error {
 	// ignore r.started, since we needn't use reflect for anything.
 	columns, err := r.Columns()

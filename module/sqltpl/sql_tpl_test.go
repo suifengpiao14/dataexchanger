@@ -12,7 +12,8 @@ import (
 
 func TestNewNamedStatment(t *testing.T) {
 	s := "{{define \"GetQuestionByID\"}} select * from `t_eva_item_all` where  `Fid`=:QID  {{if .ClassID}} and  `Fitem_class_id` in ({{in . .ClassID}}) {{end}} and `Fvalid`=1 and `Fcheck_item`=1  order by Fid asc; {{end}}"
-	sqlTemplate := NewSQLTemplate().AddTpl("", s)
+	sqlTemplate := NewSQLTemplate()
+	sqlTemplate.AddTpl("", s)
 	name := &tengo.String{
 		Value: "GetQuestionByID",
 	}
@@ -43,7 +44,9 @@ func TestExecSQL(t *testing.T) {
 		panic(err)
 	}
 
-	sqlTemplate := NewSQLTemplate().AddTpl("", tpl).AddTpl("", `{{define "a"}} hello world{{end}}`)
+	sqlTemplate := NewSQLTemplate()
+	sqlTemplate.AddTpl("", tpl)
+	sqlTemplate.AddTpl("", `{{define "a"}} hello world{{end}}`)
 	script.SetImports(stdlib.GetModuleMap(stdlib.AllModuleNames()...))
 	script.Add("sqlTemplate", sqlTemplate)
 	script.Add("sqlTemplateOut2SQL", SQLTemplateOut2SQL)

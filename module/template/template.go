@@ -2,6 +2,7 @@ package template
 
 import (
 	"fmt"
+
 	"strings"
 	textTemplate "text/template"
 
@@ -34,24 +35,37 @@ func (to *TemplateOut) String() string {
 
 type Template struct {
 	tengo.ObjectImpl
-	template *textTemplate.Template
-	tpl      string
+	Template         *textTemplate.Template
+	tpl              string
+	sources          map[string]string // key 为 template name ,value 为资源ID
+	templateFuncMaps []textTemplate.FuncMap
 }
 
 func NewTemplate(funcMap textTemplate.FuncMap) *Template {
 	return &Template{
-		template: textTemplate.New("").Funcs(funcMap).Funcs(sprig.TxtFuncMap()),
+		Template:         textTemplate.New("").Funcs(funcMap).Funcs(sprig.TxtFuncMap()),
+		templateFuncMaps: []textTemplate.FuncMap{funcMap, sprig.TxtFuncMap()},
 	}
 }
 
-func (t *Template) AddTpl(name string, s string) (t1 *Template) {
-	tmpl := t.template.Lookup(name)
+func (t *Template) AddTpl(name string, s string) (tplNames []string) {
+	tmpl := t.Template.Lookup(name)
 	if tmpl == nil {
-		tmpl = t.template.New(name)
+		tmpl = t.Template.New(name)
 	}
 	textTemplate.Must(tmpl.Parse(s)) // 追加
+	tmp := textTemplate.Must(t.newTemplate().Parse(s))
+	tplNames = util.GetTemplateNames(tmp)
+
 	t.tpl = fmt.Sprintf(`%s\n{{define "%s"}}%s{{end}}`, t.tpl, name, s)
-	return t
+	return tplNames
+}
+func (t *Template) newTemplate() *textTemplate.Template {
+	tpl := textTemplate.New("").Funcs(sprig.TxtFuncMap())
+	for _, funcMap := range t.templateFuncMaps {
+		tpl = tpl.Funcs(funcMap)
+	}
+	return tpl
 }
 
 func (t *Template) TypeName() string {
@@ -85,12 +99,12 @@ func (t *Template) Call(args ...tengo.Object) (tplOut tengo.Object, err error) {
 			Found:    args[1].TypeName(),
 		}
 	}
-	volume := &volumeMap{}
+	volume := &VolumeMap{}
 	for k, v := range tengoMap.Value {
 		volume.SetValue(k, tengo.ToInterface(v))
 	}
 	var b bytes.Buffer
-	err = t.template.ExecuteTemplate(&b, tplName, volume)
+	err = t.Template.ExecuteTemplate(&b, tplName, volume)
 	if err != nil {
 		err = errors.WithStack(err)
 		return tengo.UndefinedValue, err

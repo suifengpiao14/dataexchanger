@@ -13,30 +13,30 @@ type VolumeInterface interface {
 	GetValue(key string, value interface{}) (ok bool)
 }
 
-// 私有定义，确保对volumeMap 的操作全部通过 get/set 函数实现
-type volumeMap map[string]interface{}
+// 私有定义，确保对VolumeMap 的操作全部通过 get/set 函数实现
+type VolumeMap map[string]interface{}
 
-func NewVolumeMap() *volumeMap {
-	return &volumeMap{}
+func NewVolumeMap() *VolumeMap {
+	return &VolumeMap{}
 }
 
-func (v *volumeMap) init() {
+func (v *VolumeMap) init() {
 	if v == nil {
 		err := errors.Errorf("*Templatemap must init")
 		panic(err)
 	}
 	if *v == nil {
-		*v = volumeMap{} // 解决 data33 情况
+		*v = VolumeMap{} // 解决 data33 情况
 	}
 }
 
-func (v *volumeMap) SetValue(key string, value interface{}) {
+func (v *VolumeMap) SetValue(key string, value interface{}) {
 	v.init()
 	(*v)[key] = value
 
 }
 
-func (v *volumeMap) GetValue(key string, value interface{}) (ok bool) {
+func (v *VolumeMap) GetValue(key string, value interface{}) (ok bool) {
 	v.init()
 	tmp, ok := (*v)[key]
 	if !ok {
