@@ -23,20 +23,18 @@ import (
 
 // 容器，包含所有预备的资源、脚本等
 type container struct {
-	apis       map[string]*apiCompiled
-	sourcePool *SourcePool
-	lockCApi   sync.Mutex
+	apis     map[string]*apiCompiled
+	lockCApi sync.Mutex
 }
 
 func NewContainer() *container {
 	return &container{
-		apis:       map[string]*apiCompiled{},
-		lockCApi:   sync.Mutex{},
-		sourcePool: &SourcePool{},
+		apis:     map[string]*apiCompiled{},
+		lockCApi: sync.Mutex{},
 	}
 }
 
-func (c *container) RegisterAPI(capi *apiCompiled) (err error) {
+func (c *container) RegisterAPI(capi *apiCompiled) {
 	c.lockCApi.Lock()
 	defer c.lockCApi.Unlock()
 	methods := make([]string, 0)
@@ -47,13 +45,6 @@ func (c *container) RegisterAPI(capi *apiCompiled) (err error) {
 		key := apiMapKey(capi.Route, method)
 		c.apis[key] = capi
 	}
-
-	return nil
-}
-
-func (c *container) RegisterSource(identifier string, source SourceInterface) (err error) {
-	c.sourcePool.RegisterSource(identifier, source)
-	return nil
 }
 
 // 计算api map key
@@ -169,7 +160,8 @@ func (capi *apiCompiled) WithSource(tplName string, source SourceInterface) {
 
 func NewApiCompiled(api *API) (capi *apiCompiled, err error) {
 	capi = &apiCompiled{
-		Route: api.Route,
+		Methods: api.Methods,
+		Route:   api.Route,
 	}
 	if api.InputLineSchema != "" {
 		inputLineschema, err := jsonschemaline.ParseJsonschemaline(api.InputLineSchema)

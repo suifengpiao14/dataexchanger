@@ -24,6 +24,8 @@ const (
 	LOG_LEVEL_ERROR = "error"
 )
 
+type DBExecFunc func(db *sql.DB, sqls string) (out string, err error)
+
 type DBExecProviderConfig struct {
 	DSN      string `json:"dsn"`
 	LogLevel string `json:"logLevel"`
@@ -37,7 +39,7 @@ type DBExecProvider struct {
 }
 
 func (p *DBExecProvider) Exec(s string) (string, error) {
-	return dbProvider(p, s)
+	return dbProvider(p.GetDb(), s)
 }
 
 func (p *DBExecProvider) GetSource() (source interface{}) {
@@ -57,7 +59,6 @@ func (p *DBExecProvider) GetDb() *sql.DB {
 				panic(err)
 			}
 			p.db = db
-
 		})
 	}
 	return p.db
@@ -78,10 +79,9 @@ func SQLType(sqls string) string {
 	}
 	return SQL_TYPE_OTHER
 }
-func dbProvider(p *DBExecProvider, sqls string) (string, error) {
+func dbProvider(db *sql.DB, sqls string) (string, error) { // 当前函数一定会立即执行sql，考虑兼容事务内sql必须为同一句柄，此处直接传递句柄实例，而不是获取句柄函数(最小依赖)
 	sqls = util.StandardizeSpaces(util.TrimSpaces(sqls)) // 格式化sql语句
 	sqlType := SQLType(sqls)
-	db := p.GetDb()
 	if sqlType != SQL_TYPE_SELECT {
 		res, err := db.Exec(sqls)
 		if err != nil {
@@ -144,7 +144,8 @@ func dbProvider(p *DBExecProvider, sqls string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		return string(jsonByte), nil
+		out := string(jsonByte)
+		return out, nil
 	}
 
 	jsonByte, err := json.Marshal(allResult)
