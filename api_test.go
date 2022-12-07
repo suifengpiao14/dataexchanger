@@ -32,6 +32,7 @@ func TestAPI(t *testing.T) {
 		fullname=pageInfo.pageIndex,src=input.pageIndex,required
 		fullname=pageInfo.pageSize,src=input.pageSize,required
 		fullname=pageInfo.total,src=PaginateTotalOut,required`,
+		//{pageInfo:{pageIndex:input.pageIndex,pageSize:input.pageSize,total:PaginateTotalOut},items:{content:PaginateOut.#.content,createdAt:PaginateOut.#.created_at,deletedAt:PaginateOut.#.deleted_at}|@group}
 		PreScript: `
 		input["Offset"]=int(input["pageIndex"]) * int(input["pageSize"])
 		input["Limit"]=int(input["pageSize"])
@@ -61,7 +62,7 @@ func TestAPI(t *testing.T) {
 	{{define "Paginate"}} select * from component where 1=1 {{template "PaginateWhere" .}} and deleted_at is null order by updated_at desc limit :Offset,:Limit ; {{end}}
 	`
 	sourceConfig := `
-	{"logLevel":"debug","dsn":"root:123456@tcp(mysql:3306)/office_web_site?charset=utf8&timeout=1s&readTimeout=5s&writeTimeout=5s&parseTime=False&loc=Local&multiStatements=true","timeout":30}
+	{"logLevel":"debug","dsn":"root:123456@tcp(10.0.11.125:3306)/office_web_site?charset=utf8&timeout=1s&readTimeout=5s&writeTimeout=5s&parseTime=False&loc=Local&multiStatements=true","timeout":30}
 	`
 
 	tpl := template.NewTemplate(sqltpl.TemplatefuncMap)
@@ -77,7 +78,7 @@ func TestAPI(t *testing.T) {
 		capi.WithSource(tplName, &source)
 	}
 
-	inputJson := `{"pageIndex":"0","pageSize":"20"}`
+	inputJson := `{"pageIndex":"","pageSize":"20"}`
 	out, err := capi.Run(inputJson)
 	if err != nil {
 		panic(err)

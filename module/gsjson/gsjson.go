@@ -9,6 +9,7 @@ import (
 	"github.com/d5/tengo/v2"
 	"github.com/pkg/errors"
 	"github.com/suifengpiao14/datacenter/util"
+	_ "github.com/suifengpiao14/gjsonmodifier"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -57,6 +58,8 @@ func init() {
 	gjson.AddModifier("leftJoin", leftJoin)
 	gjson.AddModifier("index", index)
 	gjson.AddModifier("concat", concat) //将二维数组按行合并成一维数组,可用于多列索引
+	gjson.AddModifier("unique", unique) //数组去重
+	gjson.AddModifier("multi", multi)   //两数想成
 }
 
 var GSjon = map[string]tengo.Object{
@@ -444,7 +447,62 @@ func index(jsonStr, arg string) string {
 func tonum(json string, arg string) (num string) {
 
 	num = strings.Trim(json, `'"`)
+	if num == "" {
+		num = "0"
+	}
 	return num
+}
+
+func unique(json string, arg string) (outStr string) {
+	json = util.TrimSpaces(json)
+	m := map[string]struct{}{}
+	arr := gjson.Parse(json).Array()
+	for _, v := range arr {
+		if _, ok := m[v.Raw]; !ok {
+			m[v.Raw] = struct{}{}
+		}
+	}
+	isComma := false
+	var out []byte
+	out = append(out, '[')
+	for raw := range m {
+		if isComma {
+			out = append(out, ',')
+		}
+		isComma = true
+		out = append(out, raw...)
+
+	}
+	out = append(out, ']')
+	outStr = bytesString(out)
+	return outStr
+}
+
+func multi(json string, arg string) (v string) {
+	res := gjson.Parse(json)
+	var f float64 = 1.0
+	if res.IsArray() {
+		for _, raw := range res.Array() {
+			for _, item := range raw.Array() {
+				f *= item.Float()
+			}
+		}
+	} else if res.IsObject() {
+		for _, item := range res.Map() {
+			f *= item.Float()
+		}
+	}
+
+	if arg == "" {
+		arg = "integer"
+	}
+	switch arg {
+	case "int", "integer", "number":
+		v = fmt.Sprintf("%d", int64(f))
+	case "float":
+		v = fmt.Sprintf("%f", f)
+	}
+	return v
 }
 
 func orderBy(json string, arg string) (num string) {

@@ -17,7 +17,6 @@ import (
 	"github.com/suifengpiao14/datacenter/util"
 	"github.com/suifengpiao14/jsonschemaline"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 	"github.com/xeipuuv/gojsonschema"
 	gormLogger "gorm.io/gorm/logger"
 )
@@ -116,19 +115,21 @@ type API struct {
 }
 
 type apiCompiled struct {
-	Route          string `json:"route"`
-	Methods        string
-	_preScript     *tengo.Compiled
-	_mainScript    *tengo.Compiled
-	_postScript    *tengo.Compiled
-	defaultJson    string
-	InputSchema    *gojsonschema.JSONLoader
-	inputInstruct  *jsonschemaline.InstructTpl
-	OutputDefault  string
-	OutputSchema   *gojsonschema.JSONLoader
-	outputInstruct *jsonschemaline.InstructTpl
-	sources        map[string]SourceInterface
-	Template       *template.Template
+	Route            string `json:"route"`
+	Methods          string
+	_preScript       *tengo.Compiled
+	_mainScript      *tengo.Compiled
+	_postScript      *tengo.Compiled
+	defaultJson      string
+	InputSchema      *gojsonschema.JSONLoader
+	inputGjsonPath   string
+	inputLineSchema  *jsonschemaline.Jsonschemaline
+	OutputDefault    string
+	OutputSchema     *gojsonschema.JSONLoader
+	outputGjsonPath  string
+	outputLineSchema *jsonschemaline.Jsonschemaline
+	sources          map[string]SourceInterface
+	Template         *template.Template
 }
 
 // 确保多协程安全
@@ -176,6 +177,7 @@ func NewApiCompiled(api *API) (capi *apiCompiled, err error) {
 			err = errors.WithMessage(err, "makeApiCompiled.ParseJsonschemaline.InputLineSchema:")
 			return nil, err
 		}
+		capi.inputLineSchema = inputLineschema
 		inputSchema, err := inputLineschema.JsonSchema()
 		if err != nil {
 			err = errors.WithMessage(err, "makeApiCompiled.JsonSchema.InputLineSchema:")
@@ -189,7 +191,14 @@ func NewApiCompiled(api *API) (capi *apiCompiled, err error) {
 			return nil, err
 		}
 		capi.defaultJson = defaultInputJson.Json
-		capi.inputInstruct = jsonschemaline.ParseInstructTp(*inputLineschema)
+		capi.inputGjsonPath = inputLineschema.GjsonPath(func(format, src string, item *jsonschemaline.JsonschemalineItem) (path string) {
+			switch format {
+			case "number", "int", "integer", "float":
+				return fmt.Sprintf("%s.@tonum", src)
+			}
+			return src
+		})
+
 	}
 
 	if api.OutputLineSchema != "" {
@@ -198,6 +207,7 @@ func NewApiCompiled(api *API) (capi *apiCompiled, err error) {
 			err = errors.WithMessage(err, "makeApiCompiled.ParseJsonschemaline.OutputLineSchema:")
 			return nil, err
 		}
+		capi.outputLineSchema = outputLineschema
 		outputSchema, err := outputLineschema.JsonSchema()
 		if err != nil {
 			err = errors.WithMessage(err, "makeApiCompiled.JsonSchema.OutputLineSchema:")
@@ -211,7 +221,7 @@ func NewApiCompiled(api *API) (capi *apiCompiled, err error) {
 			return nil, err
 		}
 		capi.OutputDefault = defaultOutputJson.Json
-		capi.outputInstruct = jsonschemaline.ParseInstructTp(*outputLineschema)
+		capi.outputGjsonPath = outputLineschema.GjsonPath(nil)
 	}
 
 	if api.PreScript != "" {
@@ -334,6 +344,10 @@ func (capi *apiCompiled) Run(inputJson string) (out string, err error) {
 			return "", err
 		}
 	}
+	if inputJson != "" && capi.inputGjsonPath != "" { // 初步格式化入参
+		fmtInupt := fmt.Sprintf(`{"%s":%s}`, capi.inputLineSchema.Meta.ID, inputJson)
+		inputJson = gjson.Get(fmtInupt, capi.inputGjsonPath).String()
+	}
 	var input interface{}
 	err = json.Unmarshal([]byte(inputJson), &input)
 	if err != nil {
@@ -419,15 +433,8 @@ func (capi *apiCompiled) Run(inputJson string) (out string, err error) {
 			return "", err
 		}
 	}
-	if mainOut != "" && capi.outputInstruct != nil {
-		for _, instructTpl := range capi.outputInstruct.Instructs.Unique() {
-			v := gjson.Get(mainOut, instructTpl.Src).String()
-			out, err = sjson.Set(out, instructTpl.Dst, v)
-			if err != nil {
-				err = errors.WithMessage(err, "apiCompiled.Run.mainOut.format.output")
-				return "", err
-			}
-		}
+	if mainOut != "" && capi.outputGjsonPath != "" {
+		out = gjson.Get(mainOut, capi.outputGjsonPath).String()
 	}
 
 	return out, nil

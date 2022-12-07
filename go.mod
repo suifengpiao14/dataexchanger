@@ -10,7 +10,8 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/rs/xid v1.4.0
 	github.com/stretchr/testify v1.7.0
-	github.com/suifengpiao14/jsonschemaline v0.0.7
+	github.com/suifengpiao14/gjsonmodifier v0.0.1
+	github.com/suifengpiao14/jsonschemaline v0.0.8
 	github.com/tidwall/gjson v1.14.4
 	github.com/tidwall/sjson v1.2.5
 	github.com/xeipuuv/gojsonschema v1.2.0
