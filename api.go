@@ -22,19 +22,19 @@ import (
 )
 
 // 容器，包含所有预备的资源、脚本等
-type container struct {
+type Container struct {
 	apis     map[string]*apiCompiled
 	lockCApi sync.Mutex
 }
 
-func NewContainer() *container {
-	return &container{
+func NewContainer() *Container {
+	return &Container{
 		apis:     map[string]*apiCompiled{},
 		lockCApi: sync.Mutex{},
 	}
 }
 
-func (c *container) RegisterAPI(capi *apiCompiled) {
+func (c *Container) RegisterAPI(capi *apiCompiled) {
 	c.lockCApi.Lock()
 	defer c.lockCApi.Unlock()
 	methods := make([]string, 0)
@@ -53,27 +53,12 @@ func apiMapKey(route, method string) (key string) {
 	return key
 }
 
-func (c *container) GetCApi(route string, method string) (capi *apiCompiled, err error) {
+func (c *Container) GetCApi(route string, method string) (capi *apiCompiled, ok bool) {
 	key := apiMapKey(route, method)
 	c.lockCApi.Lock()
 	defer c.lockCApi.Unlock()
-	capi, ok := c.apis[key]
-	if !ok {
-		err = errors.Errorf("404:4000:not found api by route %s,method:%s", route, method)
-		return nil, err
-	}
-	return capi, nil
-}
-func (c *container) Handle(route string, method string, inputJson string) (out string, err error) {
-	capi, err := c.GetCApi(route, method)
-	if err != nil {
-		return "", err
-	}
-	out, err = capi.Run(inputJson)
-	if err != nil {
-		return "", err
-	}
-	return out, nil
+	capi, ok = c.apis[key]
+	return capi, ok
 }
 
 const (
@@ -101,7 +86,6 @@ type API struct {
 	MainScript       string `json:"mainScript"`       // 主脚本
 	PostScript       string `json:"postScript"`       // 后置脚本(后置脚本异步执行)
 	AfterEvent       string `json:"afterEvent"`       // 异步事件
-	Tpl              string `json:"tpl"`              // template 模板
 
 }
 

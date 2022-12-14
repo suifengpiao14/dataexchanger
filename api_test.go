@@ -51,8 +51,6 @@ func TestAPI(t *testing.T) {
 		`,
 		PostScript: ``,
 		AfterEvent: ``,
-		Tpl: `
-		`,
 	}
 	capi, err := NewApiCompiled(api)
 	if err != nil {
@@ -84,9 +82,9 @@ func TestAPI(t *testing.T) {
 	container := NewContainer()
 	container.RegisterAPI(capi)
 
-	routeCapi, err := container.GetCApi(route, method)
-	if err != nil {
-		panic(err)
+	routeCapi, ok := container.GetCApi(route, method)
+	if !ok {
+		panic(ok)
 	}
 
 	inputJson := `{"pageIndex":"","pageSize":"20"}`
@@ -138,8 +136,6 @@ func TestAPIMemory(t *testing.T) {
 		`,
 		PostScript: ``,
 		AfterEvent: ``,
-		Tpl: `
-		`,
 	}
 	capi, err := NewApiCompiled(api)
 	if err != nil {
@@ -177,9 +173,9 @@ func TestAPIMemory(t *testing.T) {
 	container := NewContainer()
 	container.RegisterAPI(capi)
 
-	routeCapi, err := container.GetCApi(route, method)
-	if err != nil {
-		panic(err)
+	routeCapi, ok := container.GetCApi(route, method)
+	if !ok {
+		panic(ok)
 	}
 
 	inputJson := `{"pageIndex":"","pageSize":"20"}`
