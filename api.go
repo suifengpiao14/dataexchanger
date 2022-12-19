@@ -91,20 +91,20 @@ const (
 )
 
 type API struct {
-	Methods          string `json:"methods"`
-	Route            string `json:"route"`            // 路由,唯一
-	BeforeEvent      string `json:"beforeEvent"`      // 执行前异步事件
-	InputLineSchema  string `json:"inputLineSchema"`  // 输入格式化规则
-	OutputLineSchema string `json:"outputLineSchema"` // 输出格式化规则
-	PreScript        string `json:"preScript"`        // 前置脚本(如提前验证)
-	MainScript       string `json:"mainScript"`       // 主脚本
-	PostScript       string `json:"postScript"`       // 后置脚本(后置脚本异步执行)
-	AfterEvent       string `json:"afterEvent"`       // 异步事件
+	Methods          string `json"methods"`
+	Route            string `json"route"`            // 路由,唯一
+	BeforeEvent      string `json"beforeEvent"`      // 执行前异步事件
+	InputLineSchema  string `json"inputLineSchema"`  // 输入格式化规则
+	OutputLineSchema string `json"outputLineSchema"` // 输出格式化规则
+	PreScript        string `json"preScript"`        // 前置脚本(如提前验证)
+	MainScript       string `json"mainScript"`       // 主脚本
+	PostScript       string `json"postScript"`       // 后置脚本(后置脚本异步执行)
+	AfterEvent       string `json"afterEvent"`       // 异步事件
 
 }
 
 type apiCompiled struct {
-	Route            string `json:"route"`
+	Route            string `json"route"`
 	Methods          string
 	_preScript       *tengo.Compiled
 	_mainScript      *tengo.Compiled
@@ -207,20 +207,20 @@ func NewApiCompiled(api *API) (capi *apiCompiled, err error) {
 	if api.InputLineSchema != "" {
 		inputLineschema, err := jsonschemaline.ParseJsonschemaline(api.InputLineSchema)
 		if err != nil {
-			err = errors.WithMessage(err, "makeApiCompiled.ParseJsonschemaline.InputLineSchema:")
+			err = errors.WithMessage(err, "makeApiCompiled.ParseJsonschemaline.InputLineSchema")
 			return nil, err
 		}
 		capi.inputLineSchema = inputLineschema
 		inputSchema, err := inputLineschema.JsonSchema()
 		if err != nil {
-			err = errors.WithMessage(err, "makeApiCompiled.JsonSchema.InputLineSchema:")
+			err = errors.WithMessage(err, "makeApiCompiled.JsonSchema.InputLineSchema")
 			return nil, err
 		}
 		inputSchemaLoader := gojsonschema.NewStringLoader(string(inputSchema))
 		capi.InputSchema = &inputSchemaLoader
 		defaultInputJson, err := jsonschemaline.ParseDefaultJson(*inputLineschema)
 		if err != nil {
-			err = errors.WithMessage(err, "makeApiCompiled.ParseDefaultJson.InputLineSchema:")
+			err = errors.WithMessage(err, "makeApiCompiled.ParseDefaultJson.InputLineSchema")
 			return nil, err
 		}
 		capi.defaultJson = defaultInputJson.Json
@@ -237,20 +237,20 @@ func NewApiCompiled(api *API) (capi *apiCompiled, err error) {
 	if api.OutputLineSchema != "" {
 		outputLineschema, err := jsonschemaline.ParseJsonschemaline(api.OutputLineSchema)
 		if err != nil {
-			err = errors.WithMessage(err, "makeApiCompiled.ParseJsonschemaline.OutputLineSchema:")
+			err = errors.WithMessage(err, "makeApiCompiled.ParseJsonschemaline.OutputLineSchema")
 			return nil, err
 		}
 		capi.outputLineSchema = outputLineschema
 		outputSchema, err := outputLineschema.JsonSchema()
 		if err != nil {
-			err = errors.WithMessage(err, "makeApiCompiled.JsonSchema.OutputLineSchema:")
+			err = errors.WithMessage(err, "makeApiCompiled.JsonSchema.OutputLineSchema")
 			return nil, err
 		}
 		outputSchemaLoader := gojsonschema.NewStringLoader(string(outputSchema))
 		capi.OutputSchema = &outputSchemaLoader
 		defaultOutputJson, err := jsonschemaline.ParseDefaultJson(*outputLineschema)
 		if err != nil {
-			err = errors.WithMessage(err, "makeApiCompiled.ParseDefaultJson.OutputLineSchema:")
+			err = errors.WithMessage(err, "makeApiCompiled.ParseDefaultJson.OutputLineSchema")
 			return nil, err
 		}
 		capi.OutputDefault = defaultOutputJson.Json
@@ -260,7 +260,7 @@ func NewApiCompiled(api *API) (capi *apiCompiled, err error) {
 	if api.PreScript != "" {
 		c, err := capi.compileScript(api.PreScript)
 		if err != nil {
-			err = errors.WithMessage(err, "makeApiCompiled.Compiled.PreScript:")
+			err = errors.WithMessage(err, "makeApiCompiled.Compiled.PreScript")
 			return nil, err
 		}
 		capi._preScript = c
@@ -269,7 +269,7 @@ func NewApiCompiled(api *API) (capi *apiCompiled, err error) {
 	if api.MainScript != "" {
 		c, err := capi.compileScript(api.MainScript)
 		if err != nil {
-			err = errors.WithMessage(err, "makeApiCompiled.Compiled.MainScript:")
+			err = errors.WithMessage(err, "makeApiCompiled.Compiled.MainScript")
 			return nil, err
 		}
 		capi._mainScript = c
@@ -278,7 +278,7 @@ func NewApiCompiled(api *API) (capi *apiCompiled, err error) {
 	if api.PostScript != "" {
 		c, err := capi.compileScript(api.PostScript)
 		if err != nil {
-			err = errors.WithMessage(err, "makeApiCompiled.Compiled.PostScript:")
+			err = errors.WithMessage(err, "makeApiCompiled.Compiled.PostScript")
 			return nil, err
 		}
 		capi._postScript = c
