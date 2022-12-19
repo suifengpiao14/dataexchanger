@@ -62,7 +62,7 @@ func init() {
 	gjson.AddModifier("multi", multi)   //两数想成
 }
 
-var GSjon = map[string]tengo.Object{
+var GSjson = map[string]tengo.Object{
 	"Get": &tengo.UserFunction{
 		Value: Get,
 	},

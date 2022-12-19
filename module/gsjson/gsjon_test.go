@@ -19,11 +19,11 @@ func TestGetSet(t *testing.T) {
 	}
 	s := tengo.NewScript([]byte(`
 	fmt:=import("fmt")
-	out:=GSjson.GetSet(jsonstr,pathMap)
+	out:=gsjson.GetSet(jsonstr,pathMap)
 	`))
 	s.EnableFileImport(true)
 	s.SetImports(stdlib.GetModuleMap(stdlib.AllModuleNames()...))
-	err := s.Add("GSjson", GSjon)
+	err := s.Add("gsjson", GSjson)
 	if err != nil {
 		require.NoError(t, err)
 		return
@@ -64,11 +64,11 @@ func TestGetSetArr(t *testing.T) {
 	}
 	s := tengo.NewScript([]byte(`
 	fmt:=import("fmt")
-	out:=GSjson.GetSet(jsonstr,pathMap)
+	out:=gsjson.GetSet(jsonstr,pathMap)
 	`))
 	s.EnableFileImport(true)
 	s.SetImports(stdlib.GetModuleMap(stdlib.AllModuleNames()...))
-	err := s.Add("GSjson", GSjon)
+	err := s.Add("gsjson", GSjson)
 	if err != nil {
 		require.NoError(t, err)
 		return

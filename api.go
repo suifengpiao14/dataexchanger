@@ -2,18 +2,24 @@ package datacenter
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
 	"text/template"
 
+	"github.com/Masterminds/sprig/v3"
 	"github.com/d5/tengo/v2"
 	"github.com/d5/tengo/v2/stdlib"
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
+	"github.com/suifengpiao14/datacenter/logger"
+	"github.com/suifengpiao14/datacenter/module/db"
 	"github.com/suifengpiao14/datacenter/module/gsjson"
+	"github.com/suifengpiao14/datacenter/module/sqltpl"
 	datatemplate "github.com/suifengpiao14/datacenter/module/template"
+	"github.com/suifengpiao14/datacenter/module/tengocontext"
 	"github.com/suifengpiao14/datacenter/util"
 	"github.com/suifengpiao14/jsonschemaline"
 	"github.com/tidwall/gjson"
@@ -41,6 +47,7 @@ func (c *Container) RegisterAPI(capi *apiCompiled) {
 	if capi.Methods != "" {
 		methods = strings.Split(capi.Methods, ",")
 	}
+	capi._container = c // 关联容器
 	for _, method := range methods {
 		key := apiMapKey(capi.Route, method)
 		c.apis[key] = capi
@@ -69,11 +76,18 @@ const (
 	SOURCE_DRIVER_TEMPLATE = "template"
 )
 const (
+	VARIABLE_NAME_CTX         = "ctx"
 	VARIABLE_NAME_INPUT       = "input"
 	VARIABLE_NAME_PRE_OUT     = "preOut"
 	VARIABLE_NAME_MAIN_OUTPUT = "output"
 	VARIABLE_NAME_POST_OUTPUT = "postOut"
 	VARIABLE_NAME_OUTPUT      = "__output__"
+)
+
+type ContextKeyType string
+
+const (
+	CONTEXT_KEY_INPUT = ContextKeyType(VARIABLE_NAME_INPUT)
 )
 
 type API struct {
@@ -105,6 +119,7 @@ type apiCompiled struct {
 	outputLineSchema *jsonschemaline.Jsonschemaline
 	sources          map[string]SourceInterface
 	Template         *template.Template
+	_container       *Container
 }
 
 // 确保多协程安全
@@ -131,8 +146,50 @@ func (capi *apiCompiled) GetPostScript() *tengo.Compiled {
 	return capi._postScript.Clone()
 }
 
-func (capi *apiCompiled) WithTemplate(tpl *template.Template) {
-	capi.Template = tpl
+func (capi *apiCompiled) WithTemplate() (self *apiCompiled) {
+	capi.Template = template.New("").Funcs(sqltpl.TemplatefuncMap).Funcs(sprig.TxtFuncMap())
+	return capi
+}
+
+func (capi *apiCompiled) WithFuncMap(funMap template.FuncMap) (self *apiCompiled) {
+	if capi.Template == nil {
+		capi.WithTemplate()
+	}
+	capi.Template.Funcs(funMap)
+	return capi
+}
+func (capi *apiCompiled) WithSQLFuncMap() (self *apiCompiled) {
+	if capi.Template == nil {
+		capi.WithTemplate()
+	}
+	capi.Template.Funcs(sqltpl.TemplatefuncMap)
+	return capi
+}
+
+func (capi *apiCompiled) WithCURLFuncMap() (self *apiCompiled) {
+	if capi.Template == nil {
+		capi.WithTemplate()
+	}
+	// todo
+	return capi
+}
+
+//AddTpl 增加模板,同时关联模板执行器
+func (capi *apiCompiled) AddTpl(name string, s string, source SourceInterface) (self *apiCompiled) {
+	if capi.Template == nil {
+		capi.WithTemplate().WithSQLFuncMap().WithCURLFuncMap()
+	}
+	tmpl := capi.Template.Lookup(name)
+	if tmpl == nil {
+		tmpl = capi.Template.New(name)
+	}
+	template.Must(tmpl.Parse(s)) // 追加
+	tmp := template.Must(template.New(name).Parse(s))
+	tplNames := GetTemplateNames(tmp)
+	for _, tplName := range tplNames {
+		capi.WithSource(tplName, source)
+	}
+	return capi
 }
 
 func (capi *apiCompiled) WithSource(tplName string, source SourceInterface) {
@@ -231,11 +288,24 @@ func NewApiCompiled(api *API) (capi *apiCompiled, err error) {
 
 func (capi *apiCompiled) ExecSQLTPL(args ...tengo.Object) (tplOut tengo.Object, err error) {
 	argLen := len(args)
-	if argLen != 2 {
+	if argLen != 3 {
 		return nil, tengo.ErrWrongNumArguments
 	}
-	sqlTplNameObj := args[0]
-	var sql string
+	ctxObj := args[0]
+	ctx, ok := ctxObj.(*tengocontext.TengoContext)
+	if !ok {
+		return nil, tengo.ErrInvalidArgumentType{
+			Name:     "context",
+			Expected: "context.Context",
+			Found:    ctxObj.TypeName(),
+		}
+	}
+	sqlLogInfo := db.SQLLogInfo{
+		Context: ctx.Context,
+		Name:    "ExecSQLTPL",
+	}
+	sqlTplNameObj := args[1]
+	var sqlStr string
 	sqlTplName, ok := tengo.ToString(sqlTplNameObj)
 	if !ok {
 		return nil, tengo.ErrInvalidArgumentType{
@@ -245,12 +315,12 @@ func (capi *apiCompiled) ExecSQLTPL(args ...tengo.Object) (tplOut tengo.Object, 
 		}
 	}
 
-	tengoMap, ok := args[1].(*tengo.Map)
+	tengoMap, ok := args[2].(*tengo.Map)
 	if !ok {
 		return nil, tengo.ErrInvalidArgumentType{
 			Name:     "data",
 			Expected: "map",
-			Found:    args[1].TypeName(),
+			Found:    tengoMap.TypeName(),
 		}
 	}
 	volume := &datatemplate.VolumeMap{}
@@ -268,21 +338,26 @@ func (capi *apiCompiled) ExecSQLTPL(args ...tengo.Object) (tplOut tengo.Object, 
 	namedSQL = util.TrimSpaces(namedSQL)
 
 	statment, arguments, err := sqlx.Named(namedSQL, *volume)
+	sqlLogInfo.Named = statment
+	sqlLogInfo.Data = volume
 	if err != nil {
 		err = errors.WithStack(err)
 		return nil, err
 	}
-	sql = gormLogger.ExplainSQL(statment, nil, `'`, arguments...)
+	sqlStr = gormLogger.ExplainSQL(statment, nil, `'`, arguments...)
+	sqlLogInfo.SQL = sqlStr
 
 	source, ok := capi.sources[sqlTplName]
 	if !ok {
 		err = errors.Errorf("not found db by tpl name:%s", sqlTplName)
 		return nil, err
 	}
-	out, err := source.Exec(sql)
+	out, err := source.Exec(sqlStr)
 	if err != nil {
 		return tengo.UndefinedValue, err
 	}
+	sqlLogInfo.Result = out
+	logger.SendLogInfo("ExecSQLTPL", sqlLogInfo)
 	tplOut = &tengo.String{Value: out}
 	return tplOut, nil
 }
@@ -292,19 +367,30 @@ func (capi *apiCompiled) compileScript(script string) (c *tengo.Compiled, err er
 	s := tengo.NewScript([]byte(script))
 	s.EnableFileImport(true)
 	s.SetImports(stdlib.GetModuleMap(stdlib.AllModuleNames()...))
-	err = s.Add("GSjson", gsjson.GSjon)
-	if err != nil {
+	if err = s.Add("gsjson", gsjson.GSjson); err != nil {
 		return nil, err
 	}
-	err = s.Add("execSQLTPL", capi.ExecSQLTPL)
-	if err != nil {
+	if err = s.Add("execSQLTPL", capi.ExecSQLTPL); err != nil {
 		return nil, err
 	}
-
-	s.Add("input", map[string]interface{}{})
-	s.Add("preOut", map[string]interface{}{})
-	s.Add("out", map[string]interface{}{})
-	s.Add("postOut", map[string]interface{}{})
+	ctx := &tengocontext.TengoContext{
+		Context: context.TODO(),
+	}
+	if err = s.Add(VARIABLE_NAME_CTX, ctx); err != nil {
+		return nil, err
+	}
+	if err = s.Add(VARIABLE_NAME_INPUT, map[string]interface{}{}); err != nil {
+		return nil, err
+	}
+	if err = s.Add(VARIABLE_NAME_PRE_OUT, map[string]interface{}{}); err != nil {
+		return nil, err
+	}
+	if err = s.Add(VARIABLE_NAME_MAIN_OUTPUT, map[string]interface{}{}); err != nil {
+		return nil, err
+	}
+	if err = s.Add(VARIABLE_NAME_POST_OUTPUT, map[string]interface{}{}); err != nil {
+		return nil, err
+	}
 	c, err = s.Compile()
 	if err != nil {
 		return nil, err
@@ -313,14 +399,23 @@ func (capi *apiCompiled) compileScript(script string) (c *tengo.Compiled, err er
 }
 
 // Run 执行API
-func (capi *apiCompiled) Run(inputJson string) (out string, err error) {
+func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string, err error) {
+
+	// 验证参数
+	if capi.InputSchema != nil {
+		err = Validate(inputJson, *capi.InputSchema)
+		if err != nil {
+			return "", err
+		}
+	}
+	// 合并默认值
 	if capi.defaultJson != "" {
 		inputJson, err = jsonschemaline.JsonMerge(capi.defaultJson, inputJson)
 		if err != nil {
 			return "", err
 		}
 	}
-	if inputJson != "" && capi.inputGjsonPath != "" { // 初步格式化入参
+	if inputJson != "" && capi.inputGjsonPath != "" { // 初步格式化入参(转换成脚本中的输入)
 		fmtInupt := fmt.Sprintf(`{"%s":%s}`, capi.inputLineSchema.Meta.ID, inputJson)
 		inputJson = gjson.Get(fmtInupt, capi.inputGjsonPath).String()
 	}
@@ -330,8 +425,16 @@ func (capi *apiCompiled) Run(inputJson string) (out string, err error) {
 		err = errors.WithMessage(err, "json.Unmarshal(inputJson)")
 		return "", err
 	}
+	ctx = context.WithValue(ctx, CONTEXT_KEY_INPUT, input) //增加输入到上下文
 	var preOut interface{}
+	ctxObj := &tengocontext.TengoContext{
+		Context: ctx,
+	}
 	if c := capi.GetPreScript(); c != nil {
+		if err = c.Set(VARIABLE_NAME_CTX, ctxObj); err != nil {
+			err = errors.WithMessage(err, "apiCompiled.SetCtx.PreScript")
+			return "", err
+		}
 		if err = c.Set(VARIABLE_NAME_INPUT, input); err != nil {
 			err = errors.WithMessage(err, "apiCompiled.SetInput.PreScript")
 			return "", err
@@ -357,6 +460,10 @@ func (capi *apiCompiled) Run(inputJson string) (out string, err error) {
 	var mainOut string
 	var mainOutObj *tengo.Variable
 	if c := capi.GetMainScript(); c != nil {
+		if err = c.Set(VARIABLE_NAME_CTX, ctxObj); err != nil {
+			err = errors.WithMessage(err, "apiCompiled.SetCtx.MainScript")
+			return "", err
+		}
 		if err = c.Set(VARIABLE_NAME_INPUT, input); err != nil {
 			err = errors.WithMessage(err, "apiCompiled.SetInput.MainScript")
 			return "", err
@@ -387,6 +494,10 @@ func (capi *apiCompiled) Run(inputJson string) (out string, err error) {
 		}
 	}
 	if c := capi.GetPostScript(); c != nil {
+		if err = c.Set(VARIABLE_NAME_CTX, ctxObj); err != nil {
+			err = errors.WithMessage(err, "apiCompiled.SetCtx.PostScript")
+			return "", err
+		}
 		if err = c.Set(VARIABLE_NAME_INPUT, inputJson); err != nil {
 			err = errors.WithMessage(err, "apiCompiled.SetInput.PostScript")
 			return "", err
