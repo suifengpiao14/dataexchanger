@@ -7,13 +7,15 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
+	datacenterloger "github.com/suifengpiao14/datacenter/logger"
 	"github.com/suifengpiao14/datacenter/module/tengocontext"
+	"github.com/suifengpiao14/datacenter/source"
 	gormLogger "gorm.io/gorm/logger"
 )
 
 type ExecSQL struct {
 	tengo.ObjectImpl
-	provider *DBExecProvider
+	provider *source.DBExecProvider
 }
 type SQLLogInfo struct {
 	Context context.Context
@@ -22,11 +24,24 @@ type SQLLogInfo struct {
 	Named   string      `json:"named"`
 	Data    interface{} `json:"data"`
 	Result  string      `json:"result"`
+	Err     error       `json:"error"`
 }
 
-func NewEXECSQL(config DBExecProviderConfig) *ExecSQL {
+func (l SQLLogInfo) GetName() string {
+	return l.Name
+}
+func (l SQLLogInfo) Error() error {
+	return l.Err
+}
+
+const (
+	SQL_LOG_INFO_EXEC     = "ExecSQL"
+	SQL_LOG_INFO_EXEC_TPL = "ExecSQLTPL"
+)
+
+func NewEXECSQL(config source.DBExecProviderConfig) *ExecSQL {
 	return &ExecSQL{
-		provider: &DBExecProvider{
+		provider: &source.DBExecProvider{
 			Config: config,
 		},
 	}
@@ -40,6 +55,13 @@ func (db *ExecSQL) String() string {
 }
 
 func (db *ExecSQL) Call(args ...tengo.Object) (tplOut tengo.Object, err error) {
+	sqlLogInfo := SQLLogInfo{
+		Name: SQL_LOG_INFO_EXEC,
+	}
+	defer func() {
+		sqlLogInfo.Err = err
+		datacenterloger.SendLogInfo(sqlLogInfo)
+	}()
 	argLen := len(args)
 	if argLen != 2 && argLen != 3 {
 		return nil, tengo.ErrWrongNumArguments
@@ -54,10 +76,7 @@ func (db *ExecSQL) Call(args ...tengo.Object) (tplOut tengo.Object, err error) {
 			Found:    ctxObj.TypeName(),
 		}
 	}
-	sqlLogInfo := SQLLogInfo{
-		Context: ctx.Context,
-		Name:    "ExecSQL",
-	}
+	sqlLogInfo.Context = ctx.Context
 	sqlObj := args[1]
 	sql, ok := tengo.ToString(sqlObj)
 	if !ok {

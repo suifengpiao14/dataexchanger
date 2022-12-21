@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/suifengpiao14/datacenter/logger"
-	"github.com/suifengpiao14/datacenter/module/db"
+	"github.com/suifengpiao14/datacenter/source"
 )
 
 func TestAPI(t *testing.T) {
@@ -64,13 +64,13 @@ func TestAPI(t *testing.T) {
 	sourceConfig := `
 	   	{"logLevel":"debug","dsn":"root:123456@tcp(10.0.11.125:3306)/office_web_site?charset=utf8&timeout=1s&readTimeout=5s&writeTimeout=5s&parseTime=False&loc=Local&multiStatements=true","timeout":30}
 	   	`
-	var dbConfig db.DBExecProviderConfig
+	var dbConfig source.DBExecProviderConfig
 	err = json.Unmarshal([]byte(sourceConfig), &dbConfig)
 	if err != nil {
 		panic(err)
 	}
-	source := db.DBExecProvider{Config: dbConfig}
-	capi.AddTpl("", tplStr, &source)
+	dbSource := source.DBExecProvider{Config: dbConfig}
+	capi.AddTpl("", tplStr, &dbSource)
 
 	container := NewContainer()
 	container.RegisterAPI(capi)

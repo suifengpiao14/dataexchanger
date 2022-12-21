@@ -17,6 +17,13 @@ func NewSQLTemplate() *template.Template {
 }
 
 func SQLTemplateOut2SQL(args ...tengo.Object) (sqlObj tengo.Object, err error) {
+	sqlLogInfo := db.SQLLogInfo{
+		Name: db.SQL_LOG_INFO_EXEC,
+	}
+	defer func() {
+		sqlLogInfo.Err = err
+		logger.SendLogInfo(sqlLogInfo)
+	}()
 	if len(args) != 2 {
 		return nil, tengo.ErrWrongNumArguments
 	}
@@ -28,6 +35,7 @@ func SQLTemplateOut2SQL(args ...tengo.Object) (sqlObj tengo.Object, err error) {
 			Found:    args[0].TypeName(),
 		}
 	}
+	sqlLogInfo.Context = ctxObj.Context
 
 	namedSQLObj, ok := args[1].(*template.TemplateOut)
 	namedSQLInstance := template.TemplateOut{}
@@ -43,14 +51,10 @@ func SQLTemplateOut2SQL(args ...tengo.Object) (sqlObj tengo.Object, err error) {
 		err = errors.WithStack(err)
 		return nil, err
 	}
+	sqlLogInfo.Named = statment
+	sqlLogInfo.Data = namedSQLObj.Data // 记录日志
 	sqlStr := gormLogger.ExplainSQL(statment, nil, `'`, arguments...)
-	sqlLogInfo := db.SQLLogInfo{
-		Context: ctxObj.Context,
-		SQL:     sqlStr,
-		Named:   statment,
-		Data:    namedSQLObj.Data,
-	}
-	logger.SendLogInfo("sql", sqlLogInfo)
 	sqlObj = &tengo.String{Value: sqlStr}
+	sqlLogInfo.SQL = sqlStr
 	return sqlObj, nil
 }

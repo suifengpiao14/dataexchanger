@@ -6,11 +6,12 @@ import (
 
 	"github.com/d5/tengo/v2"
 	"github.com/d5/tengo/v2/require"
+	"github.com/suifengpiao14/datacenter/source"
 )
 
 func TestExecSQL(t *testing.T) {
 
-	cfg := DBExecProviderConfig{
+	cfg := source.DBExecProviderConfig{
 		DSN:      "hjx:123456@tcp(recycle.m.mysql.hsb.com:3306)/recycle?charset=utf8&timeout=1s&readTimeout=5s&writeTimeout=5s&parseTime=False&loc=Local&multiStatements=true",
 		LogLevel: "debug",
 		Timeout:  30,

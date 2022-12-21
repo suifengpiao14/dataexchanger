@@ -1,39 +1,34 @@
-package datacenter
+package sourcepool
 
 import (
-	"encoding/json"
 	"strings"
 	"sync"
 
 	"github.com/d5/tengo/v2"
-	"github.com/pkg/errors"
-	"github.com/suifengpiao14/datacenter/module/db"
+	"github.com/go-errors/errors"
+	"github.com/suifengpiao14/datacenter/source"
 )
 
-type SourceInterface interface {
-	Exec(s string) (string, error) // label 用来坐标记，方便分类处理
-	GetSource() (handler interface{})
-}
 type SourcePool struct {
 	tengo.Object
-	Value map[string]SourceInterface
+	Value map[string]source.SourceInterface
 	lock  sync.Mutex
 }
 
-func (s *SourcePool) RegisterSource(identifier string, source SourceInterface) (err error) {
+func (s *SourcePool) RegisterSource(identifier string, sourceProvider source.SourceInterface) (err error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	s.Value[identifier] = source
+	s.Value[identifier] = sourceProvider
 	return nil
 }
 
-func (s *SourcePool) GetSource(identifier string) (source SourceInterface, err error) {
-	source, ok := s.Value[identifier]
+func (s *SourcePool) GetSource(identifier string) (sourceProvider source.SourceInterface, err error) {
+	sourceProvider, ok := s.Value[identifier]
 	if !ok {
 		err = errors.Errorf("not found identifier(%s) source", identifier)
 		return nil, err
 	}
-	return source, nil
+	return sourceProvider, nil
 }
 
 func (s *SourcePool) TypeName() string {
@@ -83,34 +78,4 @@ func (s *SourcePool) Call(args ...tengo.Object) (outObj tengo.Object, err error)
 	}
 	outObj = &tengo.String{Value: out}
 	return outObj, nil
-}
-
-const (
-	PROVIDER_SQL      = "SQL"
-	PROVIDER_CURL     = "CURL"
-	PROVIDER_BIN      = "BIN"
-	PROVIDER_REDIS    = "REDIS"
-	PROVIDER_RABBITMQ = "RABBITMQ"
-)
-
-// MakeExecProvider 根据名称，获取exec 执行器，后续改成注册执行器方式
-func MakeSource(identifier string, configJson string) (execProvider SourceInterface, err error) {
-
-	switch identifier {
-	case PROVIDER_SQL:
-		var config db.DBExecProviderConfig
-		if configJson != "" {
-			err = json.Unmarshal([]byte(configJson), &config)
-			if err != nil {
-				return nil, err
-			}
-		}
-		execProvider = &db.DBExecProvider{
-			Config: config,
-		}
-	default:
-		err = errors.Errorf("not suport source type :%s", identifier)
-		return nil, err
-	}
-	return execProvider, nil
 }

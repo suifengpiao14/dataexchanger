@@ -20,6 +20,7 @@ import (
 	"github.com/suifengpiao14/datacenter/module/sqltpl"
 	datatemplate "github.com/suifengpiao14/datacenter/module/template"
 	"github.com/suifengpiao14/datacenter/module/tengocontext"
+	"github.com/suifengpiao14/datacenter/source"
 	"github.com/suifengpiao14/datacenter/util"
 	"github.com/suifengpiao14/jsonschemaline"
 	"github.com/tidwall/gjson"
@@ -91,15 +92,15 @@ const (
 )
 
 type API struct {
-	Methods          string `json"methods"`
-	Route            string `json"route"`            // 路由,唯一
-	BeforeEvent      string `json"beforeEvent"`      // 执行前异步事件
-	InputLineSchema  string `json"inputLineSchema"`  // 输入格式化规则
-	OutputLineSchema string `json"outputLineSchema"` // 输出格式化规则
-	PreScript        string `json"preScript"`        // 前置脚本(如提前验证)
-	MainScript       string `json"mainScript"`       // 主脚本
-	PostScript       string `json"postScript"`       // 后置脚本(后置脚本异步执行)
-	AfterEvent       string `json"afterEvent"`       // 异步事件
+	Methods          string `json:"methods"`
+	Route            string `json:"route"`            // 路由,唯一
+	BeforeEvent      string `json:"beforeEvent"`      // 执行前异步事件
+	InputLineSchema  string `json:"inputLineSchema"`  // 输入格式化规则
+	OutputLineSchema string `json:"outputLineSchema"` // 输出格式化规则
+	PreScript        string `json:"preScript"`        // 前置脚本(如提前验证)
+	MainScript       string `json:"mainScript"`       // 主脚本
+	PostScript       string `json:"postScript"`       // 后置脚本(后置脚本异步执行)
+	AfterEvent       string `json:"afterEvent"`       // 异步事件
 
 }
 
@@ -117,7 +118,7 @@ type apiCompiled struct {
 	OutputSchema     *gojsonschema.JSONLoader
 	outputGjsonPath  string
 	outputLineSchema *jsonschemaline.Jsonschemaline
-	sources          map[string]SourceInterface
+	sources          map[string]source.SourceInterface
 	Template         *template.Template
 	_container       *Container
 }
@@ -175,7 +176,7 @@ func (capi *apiCompiled) WithCURLFuncMap() (self *apiCompiled) {
 }
 
 //AddTpl 增加模板,同时关联模板执行器
-func (capi *apiCompiled) AddTpl(name string, s string, source SourceInterface) (self *apiCompiled) {
+func (capi *apiCompiled) AddTpl(name string, s string, sourceProvider source.SourceInterface) (self *apiCompiled) {
 	if capi.Template == nil {
 		capi.WithTemplate().WithSQLFuncMap().WithCURLFuncMap()
 	}
@@ -187,16 +188,16 @@ func (capi *apiCompiled) AddTpl(name string, s string, source SourceInterface) (
 	tmp := template.Must(template.New(name).Parse(s))
 	tplNames := GetTemplateNames(tmp)
 	for _, tplName := range tplNames {
-		capi.WithSource(tplName, source)
+		capi.WithSource(tplName, sourceProvider)
 	}
 	return capi
 }
 
-func (capi *apiCompiled) WithSource(tplName string, source SourceInterface) {
+func (capi *apiCompiled) WithSource(tplName string, sourceProvider source.SourceInterface) {
 	if capi.sources == nil {
-		capi.sources = make(map[string]SourceInterface)
+		capi.sources = make(map[string]source.SourceInterface)
 	}
-	capi.sources[tplName] = source
+	capi.sources[tplName] = sourceProvider
 }
 
 func NewApiCompiled(api *API) (capi *apiCompiled, err error) {
@@ -302,7 +303,7 @@ func (capi *apiCompiled) ExecSQLTPL(args ...tengo.Object) (tplOut tengo.Object, 
 	}
 	sqlLogInfo := db.SQLLogInfo{
 		Context: ctx.Context,
-		Name:    "ExecSQLTPL",
+		Name:    db.SQL_LOG_INFO_EXEC_TPL,
 	}
 	sqlTplNameObj := args[1]
 	var sqlStr string
@@ -357,7 +358,7 @@ func (capi *apiCompiled) ExecSQLTPL(args ...tengo.Object) (tplOut tengo.Object, 
 		return tengo.UndefinedValue, err
 	}
 	sqlLogInfo.Result = out
-	logger.SendLogInfo("ExecSQLTPL", sqlLogInfo)
+	logger.SendLogInfo(sqlLogInfo)
 	tplOut = &tengo.String{Value: out}
 	return tplOut, nil
 }
@@ -398,9 +399,47 @@ func (capi *apiCompiled) compileScript(script string) (c *tengo.Compiled, err er
 	return c, nil
 }
 
+//RunLogInfo 运行是日志信息
+type RunLogInfo struct {
+	Context       context.Context `json:"context"`
+	Name          string          `json:"name"`
+	OriginalInput string          `json:"originalInput"`
+	DefaultJson   string          `json:"defaultJson"`
+	PreInput      string          `json:"preInput"`
+	PreOut        interface{}     `json:"preOut"`
+	PreOutInput   interface{}     `json:"preOutInput"`
+	MainOut       string          `json:"mainOut"`
+	PostOut       interface{}     `json:"postOut"`
+	Err           error
+}
+
+func (l RunLogInfo) GetName() string {
+	return l.Name
+}
+
+func (l RunLogInfo) Error() error {
+	return l.Err
+}
+
+const (
+	RUN_LOG_INFO      = "apiCompiled.Run"
+	RUN_POST_LOG_INFO = "apiCompiled.Run.post"
+)
+
 // Run 执行API
 func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string, err error) {
-
+	//收集日志
+	logInfo := RunLogInfo{
+		Name:          RUN_LOG_INFO,
+		Context:       ctx,
+		OriginalInput: inputJson,
+		DefaultJson:   capi.defaultJson,
+	}
+	defer func() {
+		// 发送日志
+		logInfo.Err = err
+		logger.SendLogInfo(logInfo)
+	}()
 	// 验证参数
 	if capi.InputSchema != nil {
 		err = Validate(inputJson, *capi.InputSchema)
@@ -419,6 +458,7 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 		fmtInupt := fmt.Sprintf(`{"%s":%s}`, capi.inputLineSchema.Meta.ID, inputJson)
 		inputJson = gjson.Get(fmtInupt, capi.inputGjsonPath).String()
 	}
+	logInfo.PreInput = inputJson
 	var input interface{}
 	err = json.Unmarshal([]byte(inputJson), &input)
 	if err != nil {
@@ -450,12 +490,14 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 			return "", err
 		}
 		preOut = preOutObj.Value()
+		logInfo.PreOut = preOut
 		inputObj := c.Get(VARIABLE_NAME_INPUT)
 		if err = inputObj.Error(); err != nil {
 			err = errors.WithMessage(err, "apiCompiled.Run.GetInput.PreScript")
 			return "", err
 		}
 		input = inputObj.Value()
+		logInfo.PreOutInput = input
 	}
 	var mainOut string
 	var mainOutObj *tengo.Variable
@@ -492,7 +534,9 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 			}
 			mainOut = string(b)
 		}
+		logInfo.MainOut = mainOut
 	}
+	//pos script 异步执行,需要同步处理的需要放到main中
 	if c := capi.GetPostScript(); c != nil {
 		if err = c.Set(VARIABLE_NAME_CTX, ctxObj); err != nil {
 			err = errors.WithMessage(err, "apiCompiled.SetCtx.PostScript")
@@ -510,15 +554,45 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 			err = errors.WithMessage(err, "apiCompiled.SetOut.PostScript")
 			return "", err
 		}
-		if err = c.Run(); err != nil {
-			err = errors.WithMessage(err, "apiCompiled.Run.PostScript")
-			return "", err
-		}
-		postOut := c.Get(VARIABLE_NAME_OUTPUT)
-		if err = postOut.Error(); err != nil {
-			err = errors.WithMessage(err, "apiCompiled.Run.GetOut.PostScript")
-			return "", err
-		}
+
+		go func(c *tengo.Compiled, runLogInfo RunLogInfo) {
+
+			// 复制一份,避免多协程竞争写
+			var err error
+			cpRunLogInfo := RunLogInfo{
+				Context:       runLogInfo.Context,
+				Name:          RUN_POST_LOG_INFO,
+				OriginalInput: runLogInfo.OriginalInput,
+				DefaultJson:   runLogInfo.DefaultJson,
+				PreInput:      runLogInfo.PreInput,
+				PreOut:        runLogInfo.PostOut,
+				PreOutInput:   runLogInfo.PreOutInput,
+				MainOut:       runLogInfo.MainOut,
+			}
+			defer func() {
+				if panicInfo := recover(); panicInfo != nil {
+					cpRunLogInfo.Err = errors.New(fmt.Sprintf("%v", panicInfo))
+					logger.SendLogInfo(cpRunLogInfo)
+				}
+			}()
+			defer func() {
+				// 发送日志
+				cpRunLogInfo.Err = err
+				logger.SendLogInfo(cpRunLogInfo)
+			}()
+
+			if err = c.Run(); err != nil {
+				err = errors.WithMessage(err, "apiCompiled.Run.PostScript")
+				return
+			}
+			postOut := c.Get(VARIABLE_NAME_OUTPUT)
+			if err = postOut.Error(); err != nil {
+				err = errors.WithMessage(err, "apiCompiled.Run.GetOut.PostScript")
+				return
+			}
+			cpRunLogInfo.PostOut = postOut.Value()
+		}(c, logInfo)
+
 	}
 	if mainOut != "" && capi.outputGjsonPath != "" {
 		out = gjson.Get(mainOut, capi.outputGjsonPath).String()
