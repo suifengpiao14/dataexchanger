@@ -1,10 +1,8 @@
 package gsjson
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
-	"unsafe"
 
 	"github.com/d5/tengo/v2"
 	"github.com/pkg/errors"
@@ -14,79 +12,124 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-func bytesString(b []byte) string {
-	return *(*string)(unsafe.Pointer(&b))
+type memory struct {
+	tengo.ImmutableMap
+	Content string
 }
 
-// unwrap removes the '[]' or '{}' characters around json
-func unwrap(json string) string {
-	json = trim(json)
-	if len(json) >= 2 && (json[0] == '[' || json[0] == '{') {
-		json = json[1 : len(json)-1]
+func NewMemory() (m *memory) {
+	m = &memory{}
+	m.Value = map[string]tengo.Object{
+		"Get": &tengo.UserFunction{
+			Value: func(args ...tengo.Object) (ret tengo.Object, err error) {
+				jsonstr := &tengo.String{Value: m.Content}
+				newArgs := make([]tengo.Object, 0)
+				newArgs = append(newArgs, jsonstr)
+				newArgs = append(newArgs, args...)
+				m.Content, err = Get(newArgs...)
+				return m, err
+			},
+		},
+		"Set": &tengo.UserFunction{
+			Value: func(args ...tengo.Object) (ret tengo.Object, err error) {
+				jsonstr := &tengo.String{Value: m.Content}
+				newArgs := make([]tengo.Object, 0)
+				newArgs = append(newArgs, jsonstr)
+				newArgs = append(newArgs, args...)
+				m.Content, err = Set(newArgs...)
+				return m, err
+			},
+		},
+		"SetRaw": &tengo.UserFunction{
+			Value: func(args ...tengo.Object) (ret tengo.Object, err error) {
+				jsonstr := &tengo.String{Value: m.Content}
+				newArgs := make([]tengo.Object, 0)
+				newArgs = append(newArgs, jsonstr)
+				newArgs = append(newArgs, args...)
+				m.Content, err = SetRaw(newArgs...)
+				return m, err
+			},
+		},
+		"GetSet": &tengo.UserFunction{
+			Value: func(args ...tengo.Object) (ret tengo.Object, err error) {
+				jsonstr := &tengo.String{Value: m.Content}
+				newArgs := make([]tengo.Object, 0)
+				newArgs = append(newArgs, jsonstr)
+				newArgs = append(newArgs, args...)
+				m.Content, err = GetSet(newArgs...)
+				return m, err
+			},
+		},
+		"Delete": &tengo.UserFunction{
+			Value: func(args ...tengo.Object) (ret tengo.Object, err error) {
+				jsonstr := &tengo.String{Value: m.Content}
+				newArgs := make([]tengo.Object, 0)
+				newArgs = append(newArgs, jsonstr)
+				newArgs = append(newArgs, args...)
+				m.Content, err = Delete(newArgs...)
+				return m, err
+			},
+		},
 	}
-	return json
+	return m
 }
 
-func trim(s string) string {
-left:
-	if len(s) > 0 && s[0] <= ' ' {
-		s = s[1:]
-		goto left
-	}
-right:
-	if len(s) > 0 && s[len(s)-1] <= ' ' {
-		s = s[:len(s)-1]
-		goto right
-	}
-	return s
+func (s *memory) TypeName() string {
+	return "gjsonMemory"
+}
+func (s *memory) String() string {
+	return s.Content
 }
 
-func init() {
-	//支持大小写转换
-	gjson.AddModifier("case", func(json, arg string) string {
-		if arg == "upper" {
-			return strings.ToUpper(json)
-		}
-		if arg == "lower" {
-			return strings.ToLower(json)
-		}
-		return json
-	})
-	gjson.AddModifier("tonum", tonum) // 列转换为数字,可用于字符串数字排序
-	gjson.AddModifier("combine", combine)
-
-	gjson.AddModifier("leftJoin", leftJoin)
-	gjson.AddModifier("index", index)
-	gjson.AddModifier("concat", concat) //将二维数组按行合并成一维数组,可用于多列索引
-	gjson.AddModifier("unique", unique) //数组去重
-	gjson.AddModifier("multi", multi)   //两数想成
+func (s *memory) CanCall() bool {
+	return false
 }
 
 var GSjson = map[string]tengo.Object{
 	"Get": &tengo.UserFunction{
-		Value: Get,
+		Value: func(args ...tengo.Object) (ret tengo.Object, err error) {
+			s, err := Get(args...)
+			ret = &tengo.String{Value: s}
+			return ret, err
+		},
 	},
 	"Set": &tengo.UserFunction{
-		Value: Set,
+		Value: func(args ...tengo.Object) (ret tengo.Object, err error) {
+			s, err := Set(args...)
+			ret = &tengo.String{Value: s}
+			return ret, err
+		},
 	},
 	"SetRaw": &tengo.UserFunction{
-		Value: SetRaw,
+		Value: func(args ...tengo.Object) (ret tengo.Object, err error) {
+			s, err := SetRaw(args...)
+			ret = &tengo.String{Value: s}
+			return ret, err
+		},
 	},
 	"GetSet": &tengo.UserFunction{
-		Value: GetSet,
+		Value: func(args ...tengo.Object) (ret tengo.Object, err error) {
+			s, err := GetSet(args...)
+			ret = &tengo.String{Value: s}
+			return ret, err
+		},
 	},
 	"Delete": &tengo.UserFunction{
-		Value: Delete,
+		Value: func(args ...tengo.Object) (ret tengo.Object, err error) {
+			s, err := Delete(args...)
+			ret = &tengo.String{Value: s}
+			return ret, err
+		},
 	},
 }
 
-func Get(args ...tengo.Object) (ret tengo.Object, err error) {
+func Get(args ...tengo.Object) (result string, err error) {
 	if len(args) != 2 {
-		return nil, tengo.ErrWrongNumArguments
+		return "", tengo.ErrWrongNumArguments
 	}
 	jsonStr, ok := tengo.ToString(args[0])
 	if !ok {
-		return nil, tengo.ErrInvalidArgumentType{
+		return "", tengo.ErrInvalidArgumentType{
 			Name:     "gjson.get.arg1",
 			Expected: "string",
 			Found:    args[0].TypeName(),
@@ -94,7 +137,7 @@ func Get(args ...tengo.Object) (ret tengo.Object, err error) {
 	}
 	path, ok := tengo.ToString(args[1])
 	if !ok {
-		return nil, tengo.ErrInvalidArgumentType{
+		return "", tengo.ErrInvalidArgumentType{
 			Name:     "gjson.get.arg2",
 			Expected: "string",
 			Found:    args[1].TypeName(),
@@ -102,18 +145,18 @@ func Get(args ...tengo.Object) (ret tengo.Object, err error) {
 	}
 	jsonStr = util.TrimSpaces(jsonStr)
 	path = util.TrimSpaces(path)
-	result := gjson.Get(jsonStr, path)
-	ret = &tengo.String{Value: result.String()}
-	return ret, nil
+	gResult := gjson.Get(jsonStr, path)
+	result = gResult.String()
+	return result, nil
 }
 
-func Set(args ...tengo.Object) (ret tengo.Object, err error) {
+func Set(args ...tengo.Object) (result string, err error) {
 	if len(args) != 3 {
-		return nil, tengo.ErrWrongNumArguments
+		return "", tengo.ErrWrongNumArguments
 	}
 	jsonStr, ok := tengo.ToString(args[0])
 	if !ok {
-		return nil, tengo.ErrInvalidArgumentType{
+		return "", tengo.ErrInvalidArgumentType{
 			Name:     "gjson.get.arg1",
 			Expected: "string",
 			Found:    args[0].TypeName(),
@@ -121,7 +164,7 @@ func Set(args ...tengo.Object) (ret tengo.Object, err error) {
 	}
 	path, ok := tengo.ToString(args[1])
 	if !ok {
-		return nil, tengo.ErrInvalidArgumentType{
+		return "", tengo.ErrInvalidArgumentType{
 			Name:     "gjson.get.arg2",
 			Expected: "string",
 			Found:    args[1].TypeName(),
@@ -131,19 +174,17 @@ func Set(args ...tengo.Object) (ret tengo.Object, err error) {
 	str, err := sjson.Set(jsonStr, path, value)
 	if err != nil {
 		err = errors.WithMessage(err, "sjson.set")
-		return nil, err
+		return "", err
 	}
-	ret = &tengo.String{Value: str}
-
-	return ret, nil
+	return str, nil
 }
-func SetRaw(args ...tengo.Object) (ret tengo.Object, err error) {
+func SetRaw(args ...tengo.Object) (result string, err error) {
 	if len(args) != 3 {
-		return nil, tengo.ErrWrongNumArguments
+		return "", tengo.ErrWrongNumArguments
 	}
 	jsonStr, ok := tengo.ToString(args[0])
 	if !ok {
-		return nil, tengo.ErrInvalidArgumentType{
+		return "", tengo.ErrInvalidArgumentType{
 			Name:     "gjson.get.arg1",
 			Expected: "string",
 			Found:    args[0].TypeName(),
@@ -151,7 +192,7 @@ func SetRaw(args ...tengo.Object) (ret tengo.Object, err error) {
 	}
 	path, ok := tengo.ToString(args[1])
 	if !ok {
-		return nil, tengo.ErrInvalidArgumentType{
+		return "", tengo.ErrInvalidArgumentType{
 			Name:     "gjson.get.arg2",
 			Expected: "string",
 			Found:    args[1].TypeName(),
@@ -159,7 +200,7 @@ func SetRaw(args ...tengo.Object) (ret tengo.Object, err error) {
 	}
 	value, ok := tengo.ToString(args[2])
 	if !ok {
-		return nil, tengo.ErrInvalidArgumentType{
+		return "", tengo.ErrInvalidArgumentType{
 			Name:     "gjson.get.arg3",
 			Expected: "string",
 			Found:    args[2].TypeName(),
@@ -168,20 +209,18 @@ func SetRaw(args ...tengo.Object) (ret tengo.Object, err error) {
 	str, err := sjson.SetRaw(jsonStr, path, value)
 	if err != nil {
 		err = errors.WithMessage(err, "sjson.setRaw")
-		return nil, err
+		return "", err
 	}
-	ret = &tengo.String{Value: str}
-
-	return ret, nil
+	return str, nil
 }
 
-func GetSet(args ...tengo.Object) (ret tengo.Object, err error) {
+func GetSet(args ...tengo.Object) (result string, err error) {
 	if len(args) != 2 {
-		return nil, tengo.ErrWrongNumArguments
+		return "", tengo.ErrWrongNumArguments
 	}
 	jsonStr, ok := tengo.ToString(args[0])
 	if !ok {
-		return nil, tengo.ErrInvalidArgumentType{
+		return "", tengo.ErrInvalidArgumentType{
 			Name:     "gjson.GetSet.arg1",
 			Expected: "string",
 			Found:    args[0].TypeName(),
@@ -189,16 +228,16 @@ func GetSet(args ...tengo.Object) (ret tengo.Object, err error) {
 	}
 	path, ok := tengo.ToString(args[1])
 	if !ok {
-		return nil, tengo.ErrInvalidArgumentType{
+		return "", tengo.ErrInvalidArgumentType{
 			Name:     "gjson.GetSet.arg2",
 			Expected: "string",
 			Found:    args[1].TypeName(),
 		}
 	}
-	result := gjson.Parse(path).Array()
+	resultArr := gjson.Parse(path).Array()
 	var out = ""
 	arrayKeys := map[string]struct{}{}
-	for _, keyRow := range result {
+	for _, keyRow := range resultArr {
 		src := keyRow.Get("src").String()
 		dst := keyRow.Get("dst").String()
 		n1Index := strings.LastIndex(dst, "-1")
@@ -216,7 +255,7 @@ func GetSet(args ...tengo.Object) (ret tengo.Object, err error) {
 		out, err = sjson.SetRaw(out, dst, raw)
 		if err != nil {
 			err = errors.WithMessage(err, "gsjson.GetSet")
-			return nil, err
+			return "", err
 		}
 	}
 	for path := range arrayKeys {
@@ -225,21 +264,19 @@ func GetSet(args ...tengo.Object) (ret tengo.Object, err error) {
 		out, err = sjson.SetRaw(out, path, raw)
 		if err != nil {
 			err = errors.WithMessage(err, "gsjson.GetSet|@group")
-			return nil, err
+			return "", err
 		}
 	}
-
-	ret = &tengo.String{Value: out}
-	return ret, nil
+	return out, nil
 }
 
-func Delete(args ...tengo.Object) (ret tengo.Object, err error) {
+func Delete(args ...tengo.Object) (result string, err error) {
 	if len(args) != 2 {
-		return nil, tengo.ErrWrongNumArguments
+		return "", tengo.ErrWrongNumArguments
 	}
 	jsonStr, ok := tengo.ToString(args[0])
 	if !ok {
-		return nil, tengo.ErrInvalidArgumentType{
+		return "", tengo.ErrInvalidArgumentType{
 			Name:     "gjson.delete.arg1",
 			Expected: "string",
 			Found:    args[0].TypeName(),
@@ -247,7 +284,7 @@ func Delete(args ...tengo.Object) (ret tengo.Object, err error) {
 	}
 	path, ok := tengo.ToString(args[1])
 	if !ok {
-		return nil, tengo.ErrInvalidArgumentType{
+		return "", tengo.ErrInvalidArgumentType{
 			Name:     "gjson.delete.arg2",
 			Expected: "string",
 			Found:    args[1].TypeName(),
@@ -256,412 +293,7 @@ func Delete(args ...tengo.Object) (ret tengo.Object, err error) {
 	str, err := sjson.Delete(jsonStr, path)
 	if err != nil {
 		err = errors.WithMessage(err, "sjson.delete")
-		return nil, err
+		return "", err
 	}
-	ret = &tengo.String{Value: str}
-
-	return ret, nil
-}
-
-func combine(jsonStr, arg string) string {
-	res := gjson.Parse(jsonStr).Array()
-	var out []byte
-	out = append(out, '{')
-	var keys []gjson.Result
-	var values []gjson.Result
-	for i, value := range res {
-		switch i {
-		case 0:
-			keys = value.Array()
-		case 1:
-			values = value.Array()
-		}
-	}
-	vlen := len(values)
-	var kvMap = map[string]struct{}{}
-	for k, v := range keys {
-		key := v.String()
-		if _, ok := kvMap[key]; ok {
-			continue
-		}
-		out = append(out, v.Raw...)
-		out = append(out, ':')
-		if k < vlen {
-			value := values[k]
-			out = append(out, value.Raw...)
-		} else {
-			out = append(out, '"', '"')
-		}
-		kvMap[key] = struct{}{}
-	}
-	out = append(out, '}')
-	return bytesString(out)
-}
-
-func leftJoin(jsonStr, arg string) string {
-	if arg == "" {
-		return jsonStr
-	}
-	if arg[0] != '[' && arg[0] != '{' {
-		arg = fmt.Sprintf("[%s]", arg)
-	}
-	var container = jsonStr
-	var sels []subSelector
-	var selsLen = 0
-	var err error
-	ok := false
-	sels, _, ok = parseSubSelectors(arg)
-	if !ok {
-		return container
-	}
-	selsLen = len(sels)
-	if selsLen < 2 {
-		return jsonStr
-	}
-
-	if selsLen%2 != 0 {
-		err = errors.Errorf("leftJoin:The path contained in the parameter must be an even number,got:%s", arg)
-		panic(err)
-	}
-	for i := len(sels) - 1; i >= 0; i = i - 2 {
-		left := sels[i-1]
-		right := sels[i]
-		sub := leftJoin2Path(container, left.path, right.path)
-		leftRowGetPath := getParentPath(left.path)
-		leftRowSetPath := nameOfLast(leftRowGetPath) // 获取数组下标
-		container, err = sjson.SetRaw(container, leftRowSetPath, sub)
-		if err != nil {
-			err = errors.WithMessage(err, "leftJoin:")
-			panic(err)
-		}
-	}
-	out := gjson.Get(container, "@this.0").String() // 返回数组的第一个
-	return out
-
-}
-
-func leftJoin2Path(jsonStr, leftPath, rightPath string) string { //合并2个元素
-	res := gjson.Parse(jsonStr)
-	firstRowPath := getParentPath(leftPath)
-	secondRowPath := getParentPath(rightPath)
-	firstRef := fmt.Sprintf("[[%s]|@concat,%s]", unwrap(leftPath), firstRowPath)
-	firstRefArr := res.Get(firstRef).Array()
-	indexArr, rowArr := firstRefArr[0].Array(), firstRefArr[1].Array()
-	secondMapPath := fmt.Sprintf("[[%s]|@concat,%s]|@combine", unwrap(rightPath), secondRowPath)
-	secondMap := res.Get(secondMapPath).Map()
-	secondDefault := map[string]gjson.Result{}
-	for _, v := range secondMap {
-		for key, value := range v.Map() {
-			raw := `""`
-			if value.Type == gjson.Number {
-				raw = `0`
-			}
-			secondDefault[key] = gjson.Result{Type: value.Type, Str: `""`, Num: 0, Raw: raw}
-		}
-		break
-	}
-
-	var out []byte
-	out = append(out, '[')
-
-	for i, index := range indexArr {
-		if i > 0 {
-			out = append(out, ',')
-		}
-		row := rowArr[i].Map()
-		secondV, ok := secondMap[index.String()]
-		secondVMap := secondDefault
-		if ok {
-			secondVMap = secondV.Map()
-		}
-		for k, v := range secondVMap {
-			if _, ok := row[k]; ok {
-				k = fmt.Sprintf("%s1", k)
-			}
-			row[k] = v
-		}
-		out = append(out, '{')
-		j := 0
-		for k, v := range row {
-			if j > 0 {
-				out = append(out, ',')
-			}
-			j++
-			out = append(out, fmt.Sprintf(`"%s"`, k)...)
-			out = append(out, ':')
-			out = append(out, v.Raw...)
-
-		}
-		out = append(out, '}')
-	}
-	out = append(out, ']')
-	outStr := bytesString(out)
-	return outStr
-}
-
-func index(jsonStr, arg string) string {
-	if arg == "" {
-		return jsonStr
-	}
-	res := gjson.Parse(jsonStr)
-	if arg[0] != '[' && arg[0] != '{' {
-		arg = fmt.Sprintf(`[%s]`, arg) // 统一使用复合索引方式处理
-	}
-	rowPath := getParentPath(arg)
-	refPath := fmt.Sprintf("[%s|@values,%s]", arg, rowPath)
-	refArr := res.Get(refPath).Array()
-	keyArr, rowArr := refArr[0].Array(), refArr[1].Array()
-	indexMapArr := make(map[string][]gjson.Result)
-	indexArr := concatColumn("-", keyArr...)
-	for i, indexKey := range indexArr {
-		if _, ok := indexMapArr[indexKey]; !ok {
-			indexMapArr[indexKey] = make([]gjson.Result, 0)
-		}
-		indexMapArr[indexKey] = append(indexMapArr[indexKey], rowArr[i])
-	}
-
-	var out []byte
-	out = append(out, '{')
-	i := 0
-	for k, arr := range indexMapArr {
-		if i > 0 {
-			out = append(out, ',')
-		}
-		i++
-		out = append(out, fmt.Sprintf(`"%s"`, k)...)
-		out = append(out, ':')
-		out = append(out, '[')
-		for j, row := range arr {
-			if j > 0 {
-				out = append(out, ',')
-			}
-			out = append(out, row.Raw...)
-		}
-		out = append(out, ']')
-	}
-	out = append(out, '}')
-	outStr := bytesString(out)
-	return outStr
-}
-
-func tonum(json string, arg string) (num string) {
-
-	num = strings.Trim(json, `'"`)
-	if num == "" {
-		num = "0"
-	}
-	return num
-}
-
-func unique(json string, arg string) (outStr string) {
-	json = util.TrimSpaces(json)
-	m := map[string]struct{}{}
-	arr := gjson.Parse(json).Array()
-	for _, v := range arr {
-		if _, ok := m[v.Raw]; !ok {
-			m[v.Raw] = struct{}{}
-		}
-	}
-	isComma := false
-	var out []byte
-	out = append(out, '[')
-	for raw := range m {
-		if isComma {
-			out = append(out, ',')
-		}
-		isComma = true
-		out = append(out, raw...)
-
-	}
-	out = append(out, ']')
-	outStr = bytesString(out)
-	return outStr
-}
-
-func multi(json string, arg string) (v string) {
-	res := gjson.Parse(json)
-	var f float64 = 1.0
-	if res.IsArray() {
-		for _, raw := range res.Array() {
-			for _, item := range raw.Array() {
-				f *= item.Float()
-			}
-		}
-	} else if res.IsObject() {
-		for _, item := range res.Map() {
-			f *= item.Float()
-		}
-	}
-
-	if arg == "" {
-		arg = "integer"
-	}
-	switch arg {
-	case "int", "integer", "number":
-		v = fmt.Sprintf("%d", int64(f))
-	case "float":
-		v = fmt.Sprintf("%f", f)
-	}
-	return v
-}
-
-func orderBy(json string, arg string) (num string) {
-	num = strings.Trim(json, `'"`)
-	return num
-}
-
-func concat(jsonStr, arg string) string {
-	resArr := gjson.Parse(jsonStr).Array()
-	sep := "-"
-	if arg != "" {
-		sep = arg
-	}
-	arr := concatColumn(sep, resArr...)
-	b, err := json.Marshal(arr)
-	if err != nil {
-		err = errors.WithMessage(err, "gsjson.concat")
-		panic(err)
-	}
-	out := string(b)
-	return out
-
-}
-
-// concatColumn 合并一行中的所有数据，复合索引使用
-func concatColumn(sep string, columns ...gjson.Result) (out []string) {
-	out = make([]string, 0)
-	clen := len(columns)
-	if clen == 0 {
-		return out
-	}
-	rlen := len(columns[0].Array())
-	for i := 0; i < rlen; i++ {
-		row := make([]string, 0)
-		for j := 0; j < clen; j++ {
-			column := columns[j].Array()
-			row = append(row, column[i].String())
-		}
-		out = append(out, strings.Join(row, sep))
-	}
-	return out
-}
-
-func getParentPath(path string) string {
-	path = util.TrimSpaces(path)
-	if path[0] == '[' || path[0] == '{' {
-		subs, newPath, ok := parseSubSelectors(path)
-		if !ok {
-			return path
-		}
-		if len(subs) == 0 {
-			return newPath // todo 验证返回内容
-		}
-		path = subs[0].path // 取第一个路径计算父路径
-	}
-	path = nameOfPrefix(path)
-	path = strings.Trim(path, ".#")
-	if path == "" {
-		path = "@this"
-	}
-	return path
-}
-
-// nameOfLast returns the name of the last component
-func nameOfLast(path string) string {
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '|' || path[i] == '.' {
-			if i > 0 {
-				if path[i-1] == '\\' {
-					continue
-				}
-			}
-			return path[i+1:]
-		}
-	}
-	return path
-}
-
-// nameOfPrefix returns the name of the path except the last component
-func nameOfPrefix(path string) string {
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '|' || path[i] == '.' {
-			if i > 0 {
-				if path[i-1] == '\\' {
-					continue
-				}
-			}
-			return path[:i+1]
-		}
-	}
-	return path
-}
-
-type subSelector struct {
-	name string
-	path string
-}
-
-// copy from gjson
-// parseSubSelectors returns the subselectors belonging to a '[path1,path2]' or
-// '{"field1":path1,"field2":path2}' type subSelection. It's expected that the
-// first character in path is either '[' or '{', and has already been checked
-// prior to calling this function.
-func parseSubSelectors(path string) (sels []subSelector, out string, ok bool) {
-	modifier := 0
-	depth := 1
-	colon := 0
-	start := 1
-	i := 1
-	pushSel := func() {
-		var sel subSelector
-		if colon == 0 {
-			sel.path = path[start:i]
-		} else {
-			sel.name = path[start:colon]
-			sel.path = path[colon+1 : i]
-		}
-		sels = append(sels, sel)
-		colon = 0
-		modifier = 0
-		start = i + 1
-	}
-	for ; i < len(path); i++ {
-		switch path[i] {
-		case '\\':
-			i++
-		case '@':
-			if modifier == 0 && i > 0 && (path[i-1] == '.' || path[i-1] == '|') {
-				modifier = i
-			}
-		case ':':
-			if modifier == 0 && colon == 0 && depth == 1 {
-				colon = i
-			}
-		case ',':
-			if depth == 1 {
-				pushSel()
-			}
-		case '"':
-			i++
-		loop:
-			for ; i < len(path); i++ {
-				switch path[i] {
-				case '\\':
-					i++
-				case '"':
-					break loop
-				}
-			}
-		case '[', '(', '{':
-			depth++
-		case ']', ')', '}':
-			depth--
-			if depth == 0 {
-				pushSel()
-				path = path[i+1:]
-				return sels, path, true
-			}
-		}
-	}
-	return
+	return str, nil
 }

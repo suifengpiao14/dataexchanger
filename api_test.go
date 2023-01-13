@@ -118,14 +118,13 @@ func TestAPIMemory(t *testing.T) {
 		input["Limit"]=int(input["pageSize"])
 		`,
 		MainScript: `
-		
-		PaginateTotalOut:=execSQLTPL(ctx,"PaginateTotal",input)
-		PaginateOut :=execSQLTPL(ctx,"Paginate",input)
 		out:=""
 		out=gsjson.Set(out,"input",input)
-		out=gsjson.SetRaw(out,"PaginateTotalOut",PaginateTotalOut)
-		out=gsjson.SetRaw(out,"PaginateOut",PaginateOut)
-		return  out
+		b:=bytes(out)
+		PaginateTotalOut:=execSQLTPL(ctx,"PaginateTotal",input,b)
+		PaginateOut :=execSQLTPL(ctx,"Paginate",input,b)
+
+		return  string(b)
 		`,
 		PostScript: ``,
 		AfterEvent: ``,
