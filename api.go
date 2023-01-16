@@ -15,7 +15,6 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
 	"github.com/suifengpiao14/datacenter/logger"
-	"github.com/suifengpiao14/datacenter/module/db"
 	"github.com/suifengpiao14/datacenter/module/gsjson"
 	"github.com/suifengpiao14/datacenter/module/sqltpl"
 	datatemplate "github.com/suifengpiao14/datacenter/module/template"
@@ -297,8 +296,8 @@ func NewApiCompiled(api *API) (capi *apiCompiled, err error) {
 }
 
 func (capi *apiCompiled) ExecSQLTPL(args ...tengo.Object) (tplOut tengo.Object, err error) {
-	sqlLogInfo := db.SQLLogInfo{
-		Name: db.SQL_LOG_INFO_EXEC_TPL,
+	sqlLogInfo := source.SQLLogInfo{
+		Name: source.SQL_LOG_INFO_EXEC_TPL,
 	}
 	defer func() {
 		sqlLogInfo.Err = err

@@ -1,8 +1,8 @@
 package sqltpl
 
 import (
-	"github.com/suifengpiao14/datacenter/module/db"
 	"github.com/suifengpiao14/datacenter/module/tengocontext"
+	"github.com/suifengpiao14/datacenter/source"
 
 	"github.com/d5/tengo/v2"
 	"github.com/jmoiron/sqlx"
@@ -17,8 +17,8 @@ func NewSQLTemplate() *template.Template {
 }
 
 func SQLTemplateOut2SQL(args ...tengo.Object) (sqlObj tengo.Object, err error) {
-	sqlLogInfo := db.SQLLogInfo{
-		Name: db.SQL_LOG_INFO_EXEC,
+	sqlLogInfo := source.SQLLogInfo{
+		Name: source.SQL_LOG_INFO_EXEC,
 	}
 	defer func() {
 		sqlLogInfo.Err = err

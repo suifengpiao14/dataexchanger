@@ -1,8 +1,6 @@
 package db
 
 import (
-	"context"
-
 	"github.com/d5/tengo/v2"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
@@ -17,27 +15,6 @@ type ExecSQL struct {
 	tengo.ObjectImpl
 	provider *source.DBExecProvider
 }
-type SQLLogInfo struct {
-	Context context.Context
-	Name    string      `json:"name"`
-	SQL     string      `json:"sql"`
-	Named   string      `json:"named"`
-	Data    interface{} `json:"data"`
-	Result  string      `json:"result"`
-	Err     error       `json:"error"`
-}
-
-func (l SQLLogInfo) GetName() string {
-	return l.Name
-}
-func (l SQLLogInfo) Error() error {
-	return l.Err
-}
-
-const (
-	SQL_LOG_INFO_EXEC     = "ExecSQL"
-	SQL_LOG_INFO_EXEC_TPL = "ExecSQLTPL"
-)
 
 func NewEXECSQL(config source.DBExecProviderConfig) *ExecSQL {
 	return &ExecSQL{
@@ -55,8 +32,8 @@ func (db *ExecSQL) String() string {
 }
 
 func (db *ExecSQL) Call(args ...tengo.Object) (tplOut tengo.Object, err error) {
-	sqlLogInfo := SQLLogInfo{
-		Name: SQL_LOG_INFO_EXEC,
+	sqlLogInfo := source.SQLLogInfo{
+		Name: source.SQL_LOG_INFO_EXEC,
 	}
 	defer func() {
 		sqlLogInfo.Err = err
