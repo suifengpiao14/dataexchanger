@@ -222,7 +222,15 @@ func NewApiCompiled(api *API) (capi *apiCompiled, err error) {
 			return nil, err
 		}
 		capi.defaultJson = defaultInputJson.Json
-		capi.inputGjsonPath = inputLineschema.GjsonPath(nil)
+		capi.inputGjsonPath = inputLineschema.GjsonPath(func(format, src string, item *jsonschemaline.JsonschemalineItem) (path string) {
+			format = strings.ToLower(format)
+			path = src // 默认值
+			switch format {
+			case "int", "number", "integer", "float":
+				path = fmt.Sprintf("%s.@tonum", src)
+			}
+			return
+		})
 
 	}
 
@@ -246,7 +254,17 @@ func NewApiCompiled(api *API) (capi *apiCompiled, err error) {
 			return nil, err
 		}
 		capi.OutputDefault = defaultOutputJson.Json
-		capi.outputGjsonPath = outputLineschema.GjsonPath(formatPath)
+		capi.outputGjsonPath = outputLineschema.GjsonPath(func(format, src string, item *jsonschemaline.JsonschemalineItem) (path string) {
+			typ := strings.ToLower(item.Type)
+			path = src // 默认值
+			switch typ {
+			case "string":
+				path = fmt.Sprintf("%s.@tostring", src)
+			case "int", "number", "integer", "float":
+				path = fmt.Sprintf("%s.@tonum", src)
+			}
+			return path
+		})
 	}
 
 	if api.PreScript != "" {
@@ -469,6 +487,13 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 
 	if gjson.Valid(inputJson) {
 		storage.Memory, err = tengojson.Decode([]byte(inputJson))
+		for _, item := range capi.inputLineSchema.Items {
+			typ := item.Type
+			switch typ {
+			case "int", "integer", "number":
+				//todo 将float64 改成 int
+			}
+		}
 		if err != nil {
 			return "", err
 		}
@@ -552,16 +577,4 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 		out = gjson.Get(out, rootName).String()
 	}
 	return out, nil
-}
-
-func formatPath(format string, src string, item *jsonschemaline.JsonschemalineItem) (path string) {
-	typ := strings.ToLower(item.Type)
-	path = src // 默认值
-	switch typ {
-	case "string":
-		path = fmt.Sprintf("%s.@tostring", src)
-	case "int", "number", "integer":
-		path = fmt.Sprintf("%s.@tonum", src)
-	}
-	return path
 }
