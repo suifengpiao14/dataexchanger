@@ -144,7 +144,7 @@ func (capi *apiCompiled) GetPostScript() *tengo.Compiled {
 }
 
 func (capi *apiCompiled) WithTemplate() (self *apiCompiled) {
-	capi.Template = template.New("").Funcs(sqltpl.TemplatefuncMap).Funcs(sprig.TxtFuncMap())
+	capi.Template = template.New("").Funcs(sprig.TxtFuncMap())
 	return capi
 }
 
@@ -181,7 +181,9 @@ func (capi *apiCompiled) AddTpl(name string, s string, sourceProvider source.Sou
 		tmpl = capi.Template.New(name)
 	}
 	template.Must(tmpl.Parse(s)) // 追加
-	tmp := template.Must(template.New(name).Parse(s))
+	tmpApi := apiCompiled{}
+	tmpApi.WithTemplate().WithSQLFuncMap().WithCURLFuncMap()
+	tmp := template.Must(tmpApi.Template.New(name).Parse(s)) // 获取当前新注入的模板名称
 	tplNames := GetTemplateNames(tmp)
 	for _, tplName := range tplNames {
 		capi.WithSource(tplName, sourceProvider)
@@ -456,16 +458,16 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 		logInfo.Err = err
 		logger.SendLogInfo(logInfo)
 	}()
-	// 验证参数
-	if capi.InputSchema != nil {
-		err = Validate(inputJson, *capi.InputSchema)
+	// 合并默认值
+	if capi.defaultJson != "" {
+		inputJson, err = jsonschemaline.JsonMerge(capi.defaultJson, inputJson)
 		if err != nil {
 			return "", err
 		}
 	}
-	// 合并默认值
-	if capi.defaultJson != "" {
-		inputJson, err = jsonschemaline.JsonMerge(capi.defaultJson, inputJson)
+	// 验证参数
+	if capi.InputSchema != nil {
+		err = Validate(inputJson, *capi.InputSchema)
 		if err != nil {
 			return "", err
 		}
