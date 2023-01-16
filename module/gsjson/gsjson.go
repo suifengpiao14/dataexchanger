@@ -6,82 +6,99 @@ import (
 
 	"github.com/d5/tengo/v2"
 	"github.com/pkg/errors"
+	"github.com/suifengpiao14/datacenter/module/tengocontext"
 	"github.com/suifengpiao14/datacenter/util"
 	_ "github.com/suifengpiao14/gjsonmodifier"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
 
-type memory struct {
+type Storage struct {
 	tengo.ImmutableMap
-	Content string
+	DiskSpace string
+	Memory    tengo.Object //共享内存空间
+	Ctx       *tengocontext.TengoContext
 }
 
-func NewMemory() (m *memory) {
-	m = &memory{}
+func NewStorage() (m *Storage) {
+	m = &Storage{
+		Memory: &tengo.Map{},
+		Ctx:    &tengocontext.TengoContext{},
+	}
 	m.Value = map[string]tengo.Object{
 		"Get": &tengo.UserFunction{
 			Value: func(args ...tengo.Object) (ret tengo.Object, err error) {
-				jsonstr := &tengo.String{Value: m.Content}
+				jsonstr := &tengo.String{Value: m.DiskSpace}
 				newArgs := make([]tengo.Object, 0)
 				newArgs = append(newArgs, jsonstr)
 				newArgs = append(newArgs, args...)
-				m.Content, err = Get(newArgs...)
-				return m, err
+				result, err := Get(newArgs...)
+				ret = &tengo.String{Value: result}
+				return ret, err
 			},
 		},
 		"Set": &tengo.UserFunction{
 			Value: func(args ...tengo.Object) (ret tengo.Object, err error) {
-				jsonstr := &tengo.String{Value: m.Content}
+				jsonstr := &tengo.String{Value: m.DiskSpace}
 				newArgs := make([]tengo.Object, 0)
 				newArgs = append(newArgs, jsonstr)
 				newArgs = append(newArgs, args...)
-				m.Content, err = Set(newArgs...)
+				m.DiskSpace, err = Set(newArgs...)
 				return m, err
 			},
 		},
 		"SetRaw": &tengo.UserFunction{
 			Value: func(args ...tengo.Object) (ret tengo.Object, err error) {
-				jsonstr := &tengo.String{Value: m.Content}
+				jsonstr := &tengo.String{Value: m.DiskSpace}
 				newArgs := make([]tengo.Object, 0)
 				newArgs = append(newArgs, jsonstr)
 				newArgs = append(newArgs, args...)
-				m.Content, err = SetRaw(newArgs...)
+				m.DiskSpace, err = SetRaw(newArgs...)
 				return m, err
 			},
 		},
 		"GetSet": &tengo.UserFunction{
 			Value: func(args ...tengo.Object) (ret tengo.Object, err error) {
-				jsonstr := &tengo.String{Value: m.Content}
+				jsonstr := &tengo.String{Value: m.DiskSpace}
 				newArgs := make([]tengo.Object, 0)
 				newArgs = append(newArgs, jsonstr)
 				newArgs = append(newArgs, args...)
-				m.Content, err = GetSet(newArgs...)
+				m.DiskSpace, err = GetSet(newArgs...)
 				return m, err
 			},
 		},
 		"Delete": &tengo.UserFunction{
 			Value: func(args ...tengo.Object) (ret tengo.Object, err error) {
-				jsonstr := &tengo.String{Value: m.Content}
+				jsonstr := &tengo.String{Value: m.DiskSpace}
 				newArgs := make([]tengo.Object, 0)
 				newArgs = append(newArgs, jsonstr)
 				newArgs = append(newArgs, args...)
-				m.Content, err = Delete(newArgs...)
+				m.DiskSpace, err = Delete(newArgs...)
 				return m, err
+			},
+		},
+		"GetMemory": &tengo.UserFunction{
+			Value: func(args ...tengo.Object) (ret tengo.Object, err error) {
+				return m.Memory, err
+			},
+		},
+		"GetCtx": &tengo.UserFunction{
+			Value: func(args ...tengo.Object) (ret tengo.Object, err error) {
+				return m.Ctx, err
 			},
 		},
 	}
 	return m
 }
 
-func (s *memory) TypeName() string {
-	return "gjsonMemory"
+func (s *Storage) TypeName() string {
+	return "gjson-Storage"
 }
-func (s *memory) String() string {
-	return s.Content
+func (s *Storage) String() string {
+	return s.DiskSpace
 }
 
-func (s *memory) CanCall() bool {
+func (s *Storage) CanCall() bool {
 	return false
 }
 

@@ -3,7 +3,6 @@ package datacenter
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -12,6 +11,7 @@ import (
 	"github.com/Masterminds/sprig/v3"
 	"github.com/d5/tengo/v2"
 	"github.com/d5/tengo/v2/stdlib"
+	tengojson "github.com/d5/tengo/v2/stdlib/json"
 	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
 	"github.com/suifengpiao14/datacenter/logger"
@@ -78,15 +78,14 @@ const (
 	SOURCE_DRIVER_TEMPLATE = "template"
 )
 const (
-	VARIABLE_NAME_CTX  = "ctx"
-	VARIABLE_STD_INPUT = "input"
-	VARIABLE_STD_OUT   = "stdOut"
+	VARIABLE_NAME_CTX = "ctx"
+	VARIABLE_STORAGE  = "storage"
 )
 
 type ContextKeyType string
 
 const (
-	CONTEXT_KEY_INPUT = ContextKeyType(VARIABLE_STD_INPUT)
+	CONTEXT_KEY_STORAGE = ContextKeyType(VARIABLE_STORAGE)
 )
 
 type API struct {
@@ -223,13 +222,7 @@ func NewApiCompiled(api *API) (capi *apiCompiled, err error) {
 			return nil, err
 		}
 		capi.defaultJson = defaultInputJson.Json
-		capi.inputGjsonPath = inputLineschema.GjsonPath(func(format, src string, item *jsonschemaline.JsonschemalineItem) (path string) {
-			switch format {
-			case "number", "int", "integer", "float":
-				return fmt.Sprintf("%s.@tonum", src)
-			}
-			return src
-		})
+		capi.inputGjsonPath = inputLineschema.GjsonPath(nil)
 
 	}
 
@@ -395,17 +388,8 @@ func (capi *apiCompiled) compileScript(script string) (c *tengo.Compiled, err er
 	if err = s.Add("execSQLTPL", capi.ExecSQLTPL); err != nil {
 		return nil, err
 	}
-	ctx := &tengocontext.TengoContext{
-		Context: context.TODO(),
-	}
-	if err = s.Add(VARIABLE_NAME_CTX, ctx); err != nil {
-		return nil, err
-	}
-	if err = s.Add(VARIABLE_STD_INPUT, map[string]interface{}{}); err != nil {
-		return nil, err
-	}
-	gjsonMemory := gsjson.NewMemory()
-	if err = s.Add(VARIABLE_STD_OUT, gjsonMemory); err != nil {
+	gjsonMemory := gsjson.NewStorage()
+	if err = s.Add(VARIABLE_STORAGE, gjsonMemory); err != nil {
 		return nil, err
 	}
 	c, err = s.Compile()
@@ -417,15 +401,15 @@ func (capi *apiCompiled) compileScript(script string) (c *tengo.Compiled, err er
 
 //RunLogInfo 运行是日志信息
 type RunLogInfo struct {
-	Context         context.Context `json:"context"`
-	Name            string          `json:"name"`
-	OriginalInput   string          `json:"originalInput"`
-	DefaultJson     string          `json:"defaultJson"`
-	PreInput        string          `json:"preInput"`
-	PreChangedStdIn interface{}     `json:"preOutInput"`
-	Out             string          `json:"out"`
-	PostOut         interface{}     `json:"postOut"`
-	Err             error
+	Context       context.Context `json:"context"`
+	Name          string          `json:"name"`
+	OriginalInput string          `json:"originalInput"`
+	DefaultJson   string          `json:"defaultJson"`
+	PreInput      string          `json:"preInput"`
+	PreOutput     string          `json:"preOutInput"`
+	Out           string          `json:"out"`
+	PostOut       interface{}     `json:"postOut"`
+	Err           error
 }
 
 func (l RunLogInfo) GetName() string {
@@ -474,37 +458,31 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 		inputJson = gjson.Get(fmtInupt, capi.inputGjsonPath).String()
 	}
 	logInfo.PreInput = inputJson
-	var stdIn interface{}
-	stdIn = inputJson
-	if gjson.Valid(inputJson) {
-		err = json.Unmarshal([]byte(inputJson), &stdIn)
-		if err != nil {
-			err = errors.WithMessage(err, "json.Unmarshal(inputJson)")
-			return "", err
-		}
-	}
-
-	stdOut := gsjson.NewMemory()
-	ctx = context.WithValue(ctx, CONTEXT_KEY_INPUT, stdIn) //增加输入到上下文
+	inputRootName := string(capi.inputLineSchema.Meta.ID)
+	storage := gsjson.NewStorage()
+	ctx = context.WithValue(ctx, CONTEXT_KEY_STORAGE, storage) //增加存储到上下文
 	ctxObj := &tengocontext.TengoContext{
 		Context: ctx,
 	}
-	inputRootName := string(capi.inputLineSchema.Meta.ID)
-	stdOut.Content, err = sjson.Set(stdOut.Content, inputRootName, stdIn) // 输入也作为输出的一个参考
+	storage.Ctx = ctxObj                                                               // 记录上下文
+	storage.DiskSpace, err = sjson.SetRaw(storage.DiskSpace, inputRootName, inputJson) // 输入也作为输出的一个参考
+
+	if gjson.Valid(inputJson) {
+		storage.Memory, err = tengojson.Decode([]byte(inputJson))
+		if err != nil {
+			return "", err
+		}
+	} else {
+		storage.Memory = &tengo.String{Value: inputJson}
+	}
 	if err != nil {
+		err = errors.WithMessage(err, "set input to storage")
 		return "", err
 	}
 	if c := capi.GetPreScript(); c != nil {
-		if err = c.Set(VARIABLE_NAME_CTX, ctxObj); err != nil {
-			err = errors.WithMessage(err, "apiCompiled.SetCtx.PreScript")
-			return "", err
-		}
-		if err = c.Set(VARIABLE_STD_INPUT, stdIn); err != nil {
-			err = errors.WithMessage(err, "apiCompiled.SetStdIn.PreScript")
-			return "", err
-		}
-		if err = c.Set(VARIABLE_STD_OUT, stdOut); err != nil {
-			err = errors.WithMessage(err, "apiCompiled.SetStdOut.PreScript")
+		logInfo.PreInput = storage.DiskSpace
+		if err = c.Set(VARIABLE_STORAGE, storage); err != nil {
+			err = errors.WithMessage(err, "apiCompiled.SetStorage.PreScript")
 			return "", err
 		}
 		err = c.Run()
@@ -512,26 +490,12 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 			err = errors.WithMessage(err, "apiCompiled.Run.PreScript")
 			return "", err
 		}
-		inputObj := c.Get(VARIABLE_STD_INPUT)
-		if err = inputObj.Error(); err != nil {
-			err = errors.WithMessage(err, "apiCompiled.Run.GetStdIn.PreScript")
-			return "", err
-		}
-		stdIn = inputObj.Value()
-		logInfo.PreChangedStdIn = stdIn
+		logInfo.PreOutput = storage.DiskSpace
 	}
 
 	if c := capi.GetMainScript(); c != nil {
-		if err = c.Set(VARIABLE_NAME_CTX, ctxObj); err != nil {
-			err = errors.WithMessage(err, "apiCompiled.SetCtx.MainScript")
-			return "", err
-		}
-		if err = c.Set(VARIABLE_STD_INPUT, stdIn); err != nil {
-			err = errors.WithMessage(err, "apiCompiled.SetStdIn.MainScript")
-			return "", err
-		}
-		if err = c.Set(VARIABLE_STD_OUT, stdOut); err != nil {
-			err = errors.WithMessage(err, "apiCompiled.SetStdOut.MainScript")
+		if err = c.Set(VARIABLE_STORAGE, storage); err != nil {
+			err = errors.WithMessage(err, "apiCompiled.SetStorage.MainScript")
 			return "", err
 		}
 		if err = c.Run(); err != nil {
@@ -539,20 +503,12 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 			return "", err
 		}
 
-		logInfo.Out = stdOut.Content
+		logInfo.Out = storage.DiskSpace
 	}
 	//pos script 异步执行,需要同步处理的需要放到main中
 	if c := capi.GetPostScript(); c != nil {
-		if err = c.Set(VARIABLE_NAME_CTX, ctxObj); err != nil {
-			err = errors.WithMessage(err, "apiCompiled.SetCtx.PostScript")
-			return "", err
-		}
-		if err = c.Set(VARIABLE_STD_INPUT, inputJson); err != nil {
-			err = errors.WithMessage(err, "apiCompiled.SetStdIn.PostScript")
-			return "", err
-		}
-		if err = c.Set(VARIABLE_STD_OUT, stdOut); err != nil {
-			err = errors.WithMessage(err, "apiCompiled.SetStdOut.PostScript")
+		if err = c.Set(VARIABLE_STORAGE, storage); err != nil {
+			err = errors.WithMessage(err, "apiCompiled.SetStorage.PostScript")
 			return "", err
 		}
 
@@ -561,13 +517,13 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 			// 复制一份,避免多协程竞争写
 			var err error
 			cpRunLogInfo := RunLogInfo{
-				Context:         runLogInfo.Context,
-				Name:            RUN_POST_LOG_INFO,
-				OriginalInput:   runLogInfo.OriginalInput,
-				DefaultJson:     runLogInfo.DefaultJson,
-				PreInput:        runLogInfo.PreInput,
-				PreChangedStdIn: runLogInfo.PreChangedStdIn,
-				Out:             runLogInfo.Out,
+				Context:       runLogInfo.Context,
+				Name:          RUN_POST_LOG_INFO,
+				OriginalInput: runLogInfo.OriginalInput,
+				DefaultJson:   runLogInfo.DefaultJson,
+				PreInput:      runLogInfo.PreInput,
+				PreOutput:     runLogInfo.PreOutput,
+				Out:           runLogInfo.Out,
 			}
 			defer func() {
 				if panicInfo := recover(); panicInfo != nil {
@@ -585,11 +541,11 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 				err = errors.WithMessage(err, "apiCompiled.Run.PostScript")
 				return
 			}
-			cpRunLogInfo.PostOut = stdOut.Content
+			cpRunLogInfo.PostOut = storage.DiskSpace
 		}(c, logInfo)
 
 	}
-	scriptOut := stdOut.Content
+	scriptOut := storage.DiskSpace
 	if scriptOut != "" && capi.outputGjsonPath != "" {
 		out = gjson.Get(scriptOut, capi.outputGjsonPath).String()
 		rootName := string(capi.outputLineSchema.Meta.ID)
@@ -600,11 +556,12 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 
 func formatPath(format string, src string, item *jsonschemaline.JsonschemalineItem) (path string) {
 	typ := strings.ToLower(item.Type)
+	path = src // 默认值
 	switch typ {
 	case "string":
-		path = fmt.Sprintf("%s|toString", src)
+		path = fmt.Sprintf("%s.@tostring", src)
 	case "int", "number", "integer":
-		path = fmt.Sprintf("%s|tonum", src)
+		path = fmt.Sprintf("%s.@tonum", src)
 	}
 	return path
 }
