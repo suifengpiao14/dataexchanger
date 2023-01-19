@@ -13,7 +13,7 @@ import (
 func TestAPIMemory(t *testing.T) {
 	route := "/api/1/hello"
 	method := "POST"
-	api := &API{
+	api := &DtoAPI{
 		Methods: "post,get",
 		Route:   route,
 		InputLineSchema: `version=http://json-schema.org/draft-07/schema,id=input,direction=in

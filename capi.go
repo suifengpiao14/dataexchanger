@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/d5/tengo/v2"
 	"github.com/d5/tengo/v2/stdlib"
@@ -23,57 +22,8 @@ import (
 	"github.com/xeipuuv/gojsonschema"
 )
 
-// 容器，包含所有预备的资源、脚本等
-type Container struct {
-	apis     map[string]*apiCompiled
-	lockCApi sync.Mutex
-}
-
-func NewContainer() *Container {
-	return &Container{
-		apis:     map[string]*apiCompiled{},
-		lockCApi: sync.Mutex{},
-	}
-}
-
-func (c *Container) RegisterAPI(capi *apiCompiled) {
-	c.lockCApi.Lock()
-	defer c.lockCApi.Unlock()
-	methods := make([]string, 0)
-	if capi.Methods != "" {
-		methods = strings.Split(capi.Methods, ",")
-	}
-	capi._container = c // 关联容器
-	for _, method := range methods {
-		key := apiMapKey(capi.Route, method)
-		c.apis[key] = capi
-	}
-}
-
-// 计算api map key
-func apiMapKey(route, method string) (key string) {
-	key = strings.ToLower(fmt.Sprintf("%s_%s", route, method))
-	return key
-}
-
-func (c *Container) GetCApi(route string, method string) (capi *apiCompiled, ok bool) {
-	key := apiMapKey(route, method)
-	c.lockCApi.Lock()
-	defer c.lockCApi.Unlock()
-	capi, ok = c.apis[key]
-	return capi, ok
-}
-
 const (
-	SOURCE_DRIVER_MYSQL    = "mysql"
-	SOURCE_DRIVER_RABBITMQ = "rabbitmq"
-	SOURCE_DRIVER_REDIS    = "redis"
-	SOURCE_DRIVER_HTTP     = "http"
-	SOURCE_DRIVER_TEMPLATE = "template"
-)
-const (
-	VARIABLE_NAME_CTX = "ctx"
-	VARIABLE_STORAGE  = "storage"
+	VARIABLE_STORAGE = "storage"
 )
 
 type ContextKeyType string
@@ -82,7 +32,8 @@ const (
 	CONTEXT_KEY_STORAGE = ContextKeyType(VARIABLE_STORAGE)
 )
 
-type API struct {
+// DtoAPI 外部接收参数 dto
+type DtoAPI struct {
 	Methods          string `json:"methods"`
 	Route            string `json:"route"`            // 路由,唯一
 	BeforeEvent      string `json:"beforeEvent"`      // 执行前异步事件
@@ -159,7 +110,7 @@ func (capi *apiCompiled) RegisterSource(s tengosource.Source) (err error) {
 	return nil
 }
 
-func NewApiCompiled(api *API) (capi *apiCompiled, err error) {
+func NewApiCompiled(api *DtoAPI) (capi *apiCompiled, err error) {
 	capi = &apiCompiled{
 		Methods:    api.Methods,
 		Route:      api.Route,
