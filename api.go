@@ -1,31 +1,25 @@
 package datacenter
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"strings"
 	"sync"
-	"text/template"
 
-	"github.com/Masterminds/sprig/v3"
 	"github.com/d5/tengo/v2"
 	"github.com/d5/tengo/v2/stdlib"
 	tengojson "github.com/d5/tengo/v2/stdlib/json"
-	"github.com/jmoiron/sqlx"
 	"github.com/pkg/errors"
-	"github.com/suifengpiao14/datacenter/logger"
-	"github.com/suifengpiao14/datacenter/module/gsjson"
-	"github.com/suifengpiao14/datacenter/module/sqltpl"
-	datatemplate "github.com/suifengpiao14/datacenter/module/template"
-	"github.com/suifengpiao14/datacenter/module/tengocontext"
-	"github.com/suifengpiao14/datacenter/source"
-	"github.com/suifengpiao14/datacenter/util"
 	"github.com/suifengpiao14/jsonschemaline"
+	"github.com/suifengpiao14/tengolib"
+	"github.com/suifengpiao14/tengolib/tengocontext"
+	"github.com/suifengpiao14/tengolib/tengodb"
+	"github.com/suifengpiao14/tengolib/tengogsjson"
+	"github.com/suifengpiao14/tengolib/tengosource"
+	"github.com/suifengpiao14/tengolib/tengotemplate"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 	"github.com/xeipuuv/gojsonschema"
-	gormLogger "gorm.io/gorm/logger"
 )
 
 // 容器，包含所有预备的资源、脚本等
@@ -114,8 +108,8 @@ type apiCompiled struct {
 	OutputSchema     *gojsonschema.JSONLoader
 	outputGjsonPath  string
 	outputLineSchema *jsonschemaline.Jsonschemaline
-	sources          map[string]source.SourceInterface
-	Template         *template.Template
+	sourcePool       *tengosource.SourcePool
+	template         *tengotemplate.TengoTemplate
 	_container       *Container
 }
 
@@ -143,65 +137,33 @@ func (capi *apiCompiled) GetPostScript() *tengo.Compiled {
 	return capi._postScript.Clone()
 }
 
-func (capi *apiCompiled) WithTemplate() (self *apiCompiled) {
-	capi.Template = template.New("").Funcs(sprig.TxtFuncMap())
-	return capi
-}
-
-func (capi *apiCompiled) WithFuncMap(funMap template.FuncMap) (self *apiCompiled) {
-	if capi.Template == nil {
-		capi.WithTemplate()
-	}
-	capi.Template.Funcs(funMap)
-	return capi
-}
-func (capi *apiCompiled) WithSQLFuncMap() (self *apiCompiled) {
-	if capi.Template == nil {
-		capi.WithTemplate()
-	}
-	capi.Template.Funcs(sqltpl.TemplatefuncMap)
-	return capi
-}
-
-func (capi *apiCompiled) WithCURLFuncMap() (self *apiCompiled) {
-	if capi.Template == nil {
-		capi.WithTemplate()
-	}
-	// todo
-	return capi
-}
-
-//AddTpl 增加模板,同时关联模板执行器
-func (capi *apiCompiled) AddTpl(name string, s string, sourceProvider source.SourceInterface) (self *apiCompiled) {
-	if capi.Template == nil {
-		capi.WithTemplate().WithSQLFuncMap().WithCURLFuncMap()
-	}
-	tmpl := capi.Template.Lookup(name)
-	if tmpl == nil {
-		tmpl = capi.Template.New(name)
-	}
-	template.Must(tmpl.Parse(s)) // 追加
-	tmpApi := apiCompiled{}
-	tmpApi.WithTemplate().WithSQLFuncMap().WithCURLFuncMap()
-	tmp := template.Must(tmpApi.Template.New(name).Parse(s)) // 获取当前新注入的模板名称
-	tplNames := GetTemplateNames(tmp)
+//RegisterTemplateAndRelationSource 注册模板,并且关联资源
+func (capi *apiCompiled) RegisterTemplateAndRelationSource(name string, s string, sourceIdentifer string) (self *apiCompiled, err error) {
+	tplNames := capi.template.AddTpl(name, s)
 	for _, tplName := range tplNames {
-		capi.WithSource(tplName, sourceProvider)
+		err = capi.sourcePool.AddTemplateIdentiferRelation(tplName, sourceIdentifer)
+		if err != nil {
+			return nil, err
+		}
 	}
-	return capi
+	return capi, nil
 }
 
-func (capi *apiCompiled) WithSource(tplName string, sourceProvider source.SourceInterface) {
-	if capi.sources == nil {
-		capi.sources = make(map[string]source.SourceInterface)
+//RegisterSource 注册所有可能使用到的资源
+func (capi *apiCompiled) RegisterSource(s tengosource.Source) (err error) {
+	err = capi.sourcePool.RegisterSource(s)
+	if err != nil {
+		return err
 	}
-	capi.sources[tplName] = sourceProvider
+	return nil
 }
 
 func NewApiCompiled(api *API) (capi *apiCompiled, err error) {
 	capi = &apiCompiled{
-		Methods: api.Methods,
-		Route:   api.Route,
+		Methods:    api.Methods,
+		Route:      api.Route,
+		sourcePool: tengosource.NewSourcePool(),
+		template:   tengotemplate.NewTemplate(),
 	}
 	if api.InputLineSchema != "" {
 		inputLineschema, err := jsonschemaline.ParseJsonschemaline(api.InputLineSchema)
@@ -297,117 +259,26 @@ func NewApiCompiled(api *API) (capi *apiCompiled, err error) {
 	return capi, nil
 }
 
-func (capi *apiCompiled) ExecSQLTPL(args ...tengo.Object) (tplOut tengo.Object, err error) {
-	sqlLogInfo := source.SQLLogInfo{
-		Name: source.SQL_LOG_INFO_EXEC_TPL,
-	}
-	defer func() {
-		sqlLogInfo.Err = err
-		logger.SendLogInfo(sqlLogInfo)
-	}()
-	argLen := len(args)
-	if argLen < 3 {
-		return nil, tengo.ErrWrongNumArguments
-	}
-	ctxObj := args[0]
-	ctx, ok := ctxObj.(*tengocontext.TengoContext)
-	if !ok {
-		return nil, tengo.ErrInvalidArgumentType{
-			Name:     "context",
-			Expected: "context.Context",
-			Found:    ctxObj.TypeName(),
-		}
-	}
-	sqlLogInfo.Context = ctx.Context
-	sqlTplNameObj := args[1]
-	var sqlStr string
-	sqlTplName, ok := tengo.ToString(sqlTplNameObj)
-	if !ok {
-		return nil, tengo.ErrInvalidArgumentType{
-			Name:     "sqlTplName",
-			Expected: "string",
-			Found:    sqlTplNameObj.TypeName(),
-		}
-	}
-	dataObj := args[2]
-	tengoMap, ok := dataObj.(*tengo.Map)
-	if !ok {
-		return nil, tengo.ErrInvalidArgumentType{
-			Name:     "data",
-			Expected: "map",
-			Found:    dataObj.TypeName(),
-		}
-	}
-	var outObj tengo.Object
-	var outJson *tengo.String
-	if argLen >= 4 {
-		outObj = args[3]
-		outJson, ok = outObj.(*tengo.String)
-		if !ok {
-			return nil, tengo.ErrInvalidArgumentType{
-				Name:     "outJson",
-				Expected: "*string",
-				Found:    outObj.TypeName(),
-			}
-		}
-	}
-
-	volume := &datatemplate.VolumeMap{}
-	for k, v := range tengoMap.Value {
-		volume.SetValue(k, tengo.ToInterface(v))
-	}
-
-	var b bytes.Buffer
-	err = capi.Template.ExecuteTemplate(&b, sqlTplName, volume)
-	if err != nil {
-		err = errors.WithStack(err)
-		return tengo.UndefinedValue, err
-	}
-	namedSQL := strings.ReplaceAll(b.String(), datatemplate.WINDOW_EOF, datatemplate.EOF)
-	namedSQL = util.TrimSpaces(namedSQL)
-
-	statment, arguments, err := sqlx.Named(namedSQL, *volume)
-	sqlLogInfo.Named = statment
-	sqlLogInfo.Data = volume
-	if err != nil {
-		err = errors.WithStack(err)
-		return nil, err
-	}
-	sqlStr = gormLogger.ExplainSQL(statment, nil, `'`, arguments...)
-	sqlLogInfo.SQL = sqlStr
-
-	source, ok := capi.sources[sqlTplName]
-	if !ok {
-		err = errors.Errorf("not found db by tpl name:%s", sqlTplName)
-		return nil, err
-	}
-	out, err := source.Exec(sqlStr)
-	if err != nil {
-		return tengo.UndefinedValue, err
-	}
-	sqlLogInfo.Result = out
-	tplOut = &tengo.String{Value: out}
-	if outJson != nil {
-		jsonStr, err := sjson.SetRaw(outJson.Value, sqlTplName, out)
-		if err != nil {
-			return tengo.UndefinedValue, err
-		}
-		outJson.Value = jsonStr
-	}
-	return tplOut, nil
-}
-
 func (capi *apiCompiled) compileScript(script string) (c *tengo.Compiled, err error) {
 	s := tengo.NewScript([]byte(script))
 	s.EnableFileImport(true)
 	s.SetImports(stdlib.GetModuleMap(stdlib.AllModuleNames()...))
-	if err = s.Add("gsjson", gsjson.GSjson); err != nil {
+	if err = s.Add("gsjson", tengogsjson.GSjson); err != nil {
+		return nil, err
+	}
+	if err = s.Add("newContext", tengocontext.TengoContextCallable); err != nil {
 		return nil, err
 	}
 	if err = s.Add("execSQLTPL", capi.ExecSQLTPL); err != nil {
 		return nil, err
 	}
-	gjsonMemory := gsjson.NewStorage()
+	if err = s.Add("getDBByTemplateName", capi.sourcePool.TengoGetProviderByTemplateIdentifer); err != nil {
+		return nil, err
+	}
+	if err = s.Add("execTPL", capi.template.TengoExec); err != nil {
+		return nil, err
+	}
+	gjsonMemory := tengogsjson.NewStorage()
 	if err = s.Add(VARIABLE_STORAGE, gjsonMemory); err != nil {
 		return nil, err
 	}
@@ -416,6 +287,75 @@ func (capi *apiCompiled) compileScript(script string) (c *tengo.Compiled, err er
 		return nil, err
 	}
 	return c, nil
+}
+
+func (capi *apiCompiled) ExecSQLTPL(args ...tengo.Object) (dbResultTengo tengo.Object, err error) {
+	sqlLogInfo := tengodb.LogInfoEXECSQL{}
+	defer func() {
+		sqlLogInfo.Err = err
+		tengolib.SendLogInfo(sqlLogInfo)
+	}()
+	argLen := len(args)
+	if argLen != 3 {
+		return nil, tengo.ErrWrongNumArguments
+	}
+	ctxObjPossible, tplIdentiferObj, dataObj := args[0], args[1], args[2]
+	ctxObj, ok := ctxObjPossible.(*tengocontext.TengoContext)
+	if !ok {
+		return nil, tengo.ErrInvalidArgumentType{
+			Name:     "context",
+			Expected: "context.Context",
+			Found:    ctxObjPossible.TypeName(),
+		}
+	}
+	ctx := ctxObj.Context
+
+	tplName, ok := tengo.ToString(tplIdentiferObj)
+	if !ok {
+		return nil, tengo.ErrInvalidArgumentType{
+			Name:     "tplName",
+			Expected: "string",
+			Found:    args[0].TypeName(),
+		}
+	}
+	tengoMap, ok := dataObj.(*tengo.Map)
+	if !ok {
+		return nil, tengo.ErrInvalidArgumentType{
+			Name:     "data",
+			Expected: "map",
+			Found:    args[1].TypeName(),
+		}
+	}
+	volume := &tengotemplate.VolumeMap{}
+	for k, v := range tengoMap.Value {
+		volume.SetValue(k, tengo.ToInterface(v))
+	}
+
+	tplOut, volumeI, err := capi.template.Exec(tplName, volume)
+	if err != nil {
+		return nil, err
+	}
+	sqlStr, err := tengotemplate.ToSQL(tplOut, volumeI.ToMap())
+	if err != nil {
+		return nil, err
+	}
+	provider, err := capi.sourcePool.GetProviderByTemplateIdentifer(tplName)
+	if err != nil {
+		return nil, err
+	}
+	dbProvider, ok := provider.(tengodb.TengoDBInterface)
+	if !ok {
+		err = errors.Errorf("ExecSQLTPL required db source,got:%s", provider.TypeName())
+		return nil, err
+	}
+	dbResult, err := dbProvider.ExecOrQueryContext(ctx, sqlStr)
+	if err != nil {
+		return nil, err
+	}
+
+	sqlLogInfo.Result = dbResult
+	dbResultTengo = &tengo.String{Value: dbResult}
+	return dbResultTengo, nil
 }
 
 //RunLogInfo 运行是日志信息
@@ -456,7 +396,7 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 	defer func() {
 		// 发送日志
 		logInfo.Err = err
-		logger.SendLogInfo(logInfo)
+		tengolib.SendLogInfo(logInfo)
 	}()
 	// 合并默认值
 	if capi.defaultJson != "" {
@@ -478,7 +418,7 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 	}
 	logInfo.PreInput = inputJson
 	inputRootName := string(capi.inputLineSchema.Meta.ID)
-	storage := gsjson.NewStorage()
+	storage := tengogsjson.NewStorage()
 	ctx = context.WithValue(ctx, CONTEXT_KEY_STORAGE, storage) //增加存储到上下文
 	ctxObj := &tengocontext.TengoContext{
 		Context: ctx,
@@ -554,13 +494,13 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 			defer func() {
 				if panicInfo := recover(); panicInfo != nil {
 					cpRunLogInfo.Err = errors.New(fmt.Sprintf("%v", panicInfo))
-					logger.SendLogInfo(cpRunLogInfo)
+					tengolib.SendLogInfo(cpRunLogInfo)
 				}
 			}()
 			defer func() {
 				// 发送日志
 				cpRunLogInfo.Err = err
-				logger.SendLogInfo(cpRunLogInfo)
+				tengolib.SendLogInfo(cpRunLogInfo)
 			}()
 
 			if err = c.Run(); err != nil {
