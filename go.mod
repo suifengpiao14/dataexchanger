@@ -1,4 +1,4 @@
-module github.com/suifengpiao14/datacenter
+module github.com/suifengpiao14/dataexchanger
 
 go 1.18
 
