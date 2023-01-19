@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/suifengpiao14/tengolib"
 	"github.com/suifengpiao14/tengolib/tengodb"
+	"github.com/suifengpiao14/tengolib/tengologger"
 	"github.com/suifengpiao14/tengolib/tengosource"
 )
 
@@ -102,7 +102,7 @@ func TestAPIMemory(t *testing.T) {
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, "traceID", "12345")
 
-	readChain := tengolib.GetLoggerChain()
+	readChain := tengologger.GetLoggerChain()
 	go func() {
 		for {
 			data := <-readChain
