@@ -148,6 +148,8 @@ github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/
 github.com/stretchr/testify v1.8.1 h1:w7B6lhMri9wdJUVmEZPGGhZzrYTPvgJArz7wNPgYKsk=
 github.com/suifengpiao14/gjsonmodifier v0.0.2 h1:dejY1nozlBij5qiy7D6rqgIjekDqnEUkDtqq5GwVhn8=
 github.com/suifengpiao14/gjsonmodifier v0.0.2/go.mod h1:EcD9avEmVxW87y57plQFTjZo+yyU1IWGplYKLcc4qas=
+github.com/suifengpiao14/gojsonschemavalidator v0.0.3 h1:RIB2YCZjmr/b6aJ7WcUWk+evahNAGRTe80NQVIuLgP8=
+github.com/suifengpiao14/gojsonschemavalidator v0.0.3/go.mod h1:/81E93cLA0/6F0TUFodBb+VJtF0Qu4nLeTciJLvnFvA=
 github.com/suifengpiao14/jsonschemaline v0.0.9 h1:35FHzSmr4AwBRUFktaGSVbgQOqscs0mm3lsiSz9zD3o=
 github.com/suifengpiao14/jsonschemaline v0.0.9/go.mod h1:dvWLxNu3yQDM1oCcexkWgyWx8eZk55Rv4hMgmMfi674=
 github.com/suifengpiao14/tengolib v0.0.1 h1:eZ1tLf3FJ2Jr9y/DNvZbHReJOJsnq/vKilOBLPt6ZLM=

@@ -98,7 +98,7 @@ func TestAPIMemory(t *testing.T) {
 		panic(ok)
 	}
 
-	inputJson := `{"pageIndex":"","pageSize":"20"}`
+	inputJson := `{"pageIndex":"0","pageSize":"20"}`
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, "traceID", "12345")
 

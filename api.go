@@ -10,6 +10,7 @@ import (
 	"github.com/d5/tengo/v2/stdlib"
 	tengojson "github.com/d5/tengo/v2/stdlib/json"
 	"github.com/pkg/errors"
+	"github.com/suifengpiao14/gojsonschemavalidator"
 	"github.com/suifengpiao14/jsonschemaline"
 	"github.com/suifengpiao14/tengolib"
 	"github.com/suifengpiao14/tengolib/tengocontext"
@@ -407,7 +408,7 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 	}
 	// 验证参数
 	if capi.InputSchema != nil {
-		err = Validate(inputJson, *capi.InputSchema)
+		err = gojsonschemavalidator.Validate(inputJson, *capi.InputSchema)
 		if err != nil {
 			return "", err
 		}
