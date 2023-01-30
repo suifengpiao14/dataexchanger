@@ -168,20 +168,20 @@ func NewApiCompiled(api *DtoAPI) (capi *apiCompiled, err error) {
 }
 
 //RegisterTemplateAndRelationSource 注册模板
-func (capi *apiCompiled) RegisterTemplate(name string, s string) (self *apiCompiled, tplNames []string, err error) {
+func (capi *apiCompiled) RegisterTemplate(name string, s string) (tplNames []string, err error) {
 	tplNames = capi.template.AddTpl(name, s)
-	return capi, tplNames, nil
+	return tplNames, nil
 }
 
 //RelationTemplateAndSource 设置模版依赖的资源
-func (capi *apiCompiled) SetTemplateDependSource(templateIdentifers []string, sourceIdentifer string) (self *apiCompiled, err error) {
+func (capi *apiCompiled) SetTemplateDependSource(templateIdentifers []string, sourceIdentifer string) (err error) {
 	for _, tplName := range templateIdentifers {
 		err = capi.sourcePool.AddTemplateIdentiferRelation(tplName, sourceIdentifer)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
-	return capi, nil
+	return nil
 }
 
 //RegisterSource 注册所有可能使用到的资源

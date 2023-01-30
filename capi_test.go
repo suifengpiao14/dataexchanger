@@ -84,7 +84,7 @@ func TestAPIMemory(t *testing.T) {
 		panic(err)
 	}
 
-	capi, tplNames, err := capi.RegisterTemplate("", tplStr)
+	tplNames, err := capi.RegisterTemplate("", tplStr)
 	if err != nil {
 		panic(err)
 	}
