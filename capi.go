@@ -168,9 +168,9 @@ func NewApiCompiled(api *DtoAPI) (capi *apiCompiled, err error) {
 }
 
 //RegisterTemplateAndRelationSource 注册模板
-func (capi *apiCompiled) RegisterTemplate(name string, s string) (tplNames []string, err error) {
+func (capi *apiCompiled) RegisterTemplate(name string, s string) (tplNames []string) {
 	tplNames = capi.template.AddTpl(name, s)
-	return tplNames, nil
+	return tplNames
 }
 
 //RelationTemplateAndSource 设置模版依赖的资源

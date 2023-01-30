@@ -84,10 +84,7 @@ func TestAPIMemory(t *testing.T) {
 		panic(err)
 	}
 
-	tplNames, err := capi.RegisterTemplate("", tplStr)
-	if err != nil {
-		panic(err)
-	}
+	tplNames := capi.RegisterTemplate("", tplStr)
 	capi.SetTemplateDependSource(tplNames, sourceIdentifer)
 
 	container := dataexchanger.NewContainer(func(logInfo interface{}, typeName string, err error) {
