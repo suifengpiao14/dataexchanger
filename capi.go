@@ -23,31 +23,6 @@ import (
 	"github.com/xeipuuv/gojsonschema"
 )
 
-const (
-	RUN_LOG_INFO      = "apiCompiled.Run"
-	RUN_POST_LOG_INFO = "apiCompiled.Run.post"
-)
-
-//RunLogInfo 运行是日志信息
-type RunLogInfo struct {
-	Context       context.Context `json:"context"`
-	Name          string          `json:"name"`
-	OriginalInput string          `json:"originalInput"`
-	DefaultJson   string          `json:"defaultJson"`
-	PreInput      string          `json:"preInput"`
-	PreOutput     string          `json:"preOutInput"`
-	Out           string          `json:"out"`
-	PostOut       interface{}     `json:"postOut"`
-	Err           error
-}
-
-func (l RunLogInfo) GetName() string {
-	return l.Name
-}
-
-func (l RunLogInfo) Error() error {
-	return l.Err
-}
 
 const (
 	VARIABLE_STORAGE = "storage"
@@ -80,11 +55,11 @@ type apiCompiled struct {
 	_mainScript      *tengo.Compiled
 	_postScript      *tengo.Compiled
 	defaultJson      string
-	InputSchema      *gojsonschema.JSONLoader
+	inputSchema      *gojsonschema.JSONLoader
 	inputGjsonPath   string
 	inputLineSchema  *jsonschemaline.Jsonschemaline
-	OutputDefault    string
-	OutputSchema     *gojsonschema.JSONLoader
+	outputDefault    string
+	outputSchema     *gojsonschema.JSONLoader
 	outputGjsonPath  string
 	outputLineSchema *jsonschemaline.Jsonschemaline
 	sourcePool       *tengosource.SourcePool
@@ -112,7 +87,7 @@ func NewApiCompiled(api *DtoAPI) (capi *apiCompiled, err error) {
 			return nil, err
 		}
 		inputSchemaLoader := gojsonschema.NewStringLoader(string(inputSchema))
-		capi.InputSchema = &inputSchemaLoader
+		capi.inputSchema = &inputSchemaLoader
 		defaultInputJson, err := jsonschemaline.ParseDefaultJson(*inputLineschema)
 		if err != nil {
 			err = errors.WithMessage(err, "makeApiCompiled.ParseDefaultJson.InputLineSchema")
@@ -144,13 +119,13 @@ func NewApiCompiled(api *DtoAPI) (capi *apiCompiled, err error) {
 			return nil, err
 		}
 		outputSchemaLoader := gojsonschema.NewStringLoader(string(outputSchema))
-		capi.OutputSchema = &outputSchemaLoader
+		capi.outputSchema = &outputSchemaLoader
 		defaultOutputJson, err := jsonschemaline.ParseDefaultJson(*outputLineschema)
 		if err != nil {
 			err = errors.WithMessage(err, "makeApiCompiled.ParseDefaultJson.OutputLineSchema")
 			return nil, err
 		}
-		capi.OutputDefault = defaultOutputJson.Json
+		capi.outputDefault = defaultOutputJson.Json
 		capi.outputGjsonPath = outputLineschema.GjsonPath(func(format, src string, item *jsonschemaline.JsonschemalineItem) (path string) {
 			typ := strings.ToLower(item.Type)
 			path = src // 默认值
@@ -193,30 +168,6 @@ func NewApiCompiled(api *DtoAPI) (capi *apiCompiled, err error) {
 	return capi, nil
 }
 
-// 确保多协程安全
-func (capi *apiCompiled) GetPreScript() *tengo.Compiled {
-	if capi._preScript == nil {
-		return nil
-	}
-	return capi._preScript.Clone()
-}
-
-// 确保多协程安全
-func (capi *apiCompiled) GetMainScript() *tengo.Compiled {
-	if capi._mainScript == nil {
-		return nil
-	}
-	return capi._mainScript.Clone()
-}
-
-// 确保多协程安全
-func (capi *apiCompiled) GetPostScript() *tengo.Compiled {
-	if capi._postScript == nil {
-		return nil
-	}
-	return capi._postScript.Clone()
-}
-
 //RegisterTemplateAndRelationSource 注册模板,并且关联资源
 func (capi *apiCompiled) RegisterTemplateAndRelationSource(name string, s string, sourceIdentifer string) (self *apiCompiled, err error) {
 	tplNames := capi.template.AddTpl(name, s)
@@ -242,7 +193,7 @@ func (capi *apiCompiled) RegisterSource(s tengosource.Source) (err error) {
 func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string, err error) {
 	//收集日志
 	logInfo := RunLogInfo{
-		Name:          RUN_LOG_INFO,
+		Name:          LOG_INFO_RUN,
 		Context:       ctx,
 		OriginalInput: inputJson,
 		DefaultJson:   capi.defaultJson,
@@ -260,8 +211,8 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 		}
 	}
 	// 验证参数
-	if capi.InputSchema != nil {
-		err = gojsonschemavalidator.Validate(inputJson, *capi.InputSchema)
+	if capi.inputSchema != nil {
+		err = gojsonschemavalidator.Validate(inputJson, *capi.inputSchema)
 		if err != nil {
 			return "", err
 		}
@@ -297,7 +248,7 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 		err = errors.WithMessage(err, "set input to storage")
 		return "", err
 	}
-	if c := capi.GetPreScript(); c != nil {
+	if c := capi.getPreScript(); c != nil {
 		logInfo.PreInput = storage.DiskSpace
 		if err = c.Set(VARIABLE_STORAGE, storage); err != nil {
 			err = errors.WithMessage(err, "apiCompiled.SetStorage.PreScript")
@@ -311,7 +262,7 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 		logInfo.PreOutput = storage.DiskSpace
 	}
 
-	if c := capi.GetMainScript(); c != nil {
+	if c := capi.getMainScript(); c != nil {
 		if err = c.Set(VARIABLE_STORAGE, storage); err != nil {
 			err = errors.WithMessage(err, "apiCompiled.SetStorage.MainScript")
 			return "", err
@@ -324,7 +275,7 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 		logInfo.Out = storage.DiskSpace
 	}
 	//pos script 异步执行,需要同步处理的需要放到main中
-	if c := capi.GetPostScript(); c != nil {
+	if c := capi.getPostScript(); c != nil {
 		if err = c.Set(VARIABLE_STORAGE, storage); err != nil {
 			err = errors.WithMessage(err, "apiCompiled.SetStorage.PostScript")
 			return "", err
@@ -336,7 +287,7 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 			var err error
 			cpRunLogInfo := RunLogInfo{
 				Context:       runLogInfo.Context,
-				Name:          RUN_POST_LOG_INFO,
+				Name:          LOG_INFO_RUN_POST,
 				OriginalInput: runLogInfo.OriginalInput,
 				DefaultJson:   runLogInfo.DefaultJson,
 				PreInput:      runLogInfo.PreInput,
@@ -379,7 +330,7 @@ func (capi *apiCompiled) compileScript(script string) (c *tengo.Compiled, err er
 	mods2 := tengolib.GetModuleMap(tengolib.AllModuleNames()...)
 	mods.AddMap(mods2)
 	s.SetImports(mods)
-	if err = s.Add("execSQLTPL", capi.ExecSQLTPL); err != nil {
+	if err = s.Add("execSQLTPL", capi.execSQLTPL); err != nil {
 		return nil, err
 	}
 	if err = s.Add("getDBByTemplateName", capi.sourcePool.TengoGetProviderByTemplateIdentifer); err != nil {
@@ -399,7 +350,7 @@ func (capi *apiCompiled) compileScript(script string) (c *tengo.Compiled, err er
 	return c, nil
 }
 
-func (capi *apiCompiled) ExecSQLTPL(args ...tengo.Object) (dbResultTengo tengo.Object, err error) {
+func (capi *apiCompiled) execSQLTPL(args ...tengo.Object) (dbResultTengo tengo.Object, err error) {
 	sqlLogInfo := tengodb.LogInfoEXECSQL{}
 	defer func() {
 		sqlLogInfo.Err = err
@@ -466,4 +417,28 @@ func (capi *apiCompiled) ExecSQLTPL(args ...tengo.Object) (dbResultTengo tengo.O
 	sqlLogInfo.Result = dbResult
 	dbResultTengo = &tengo.String{Value: dbResult}
 	return dbResultTengo, nil
+}
+
+// 确保多协程安全
+func (capi *apiCompiled) getPreScript() *tengo.Compiled {
+	if capi._preScript == nil {
+		return nil
+	}
+	return capi._preScript.Clone()
+}
+
+// 确保多协程安全
+func (capi *apiCompiled) getMainScript() *tengo.Compiled {
+	if capi._mainScript == nil {
+		return nil
+	}
+	return capi._mainScript.Clone()
+}
+
+// 确保多协程安全
+func (capi *apiCompiled) getPostScript() *tengo.Compiled {
+	if capi._postScript == nil {
+		return nil
+	}
+	return capi._postScript.Clone()
 }

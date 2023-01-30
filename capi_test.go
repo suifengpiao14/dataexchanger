@@ -1,19 +1,18 @@
-package dataexchanger
+package dataexchanger_test
 
 import (
 	"context"
 	"fmt"
 	"testing"
 
+	"github.com/suifengpiao14/dataexchanger"
 	"github.com/suifengpiao14/tengolib/tengodb"
-	"github.com/suifengpiao14/tengolib/tengologger"
-	"github.com/suifengpiao14/tengolib/tengosource"
 )
 
 func TestAPIMemory(t *testing.T) {
 	route := "/api/1/hello"
 	method := "POST"
-	api := &DtoAPI{
+	api := &dataexchanger.DtoAPI{
 		Methods: "post,get",
 		Route:   route,
 		InputLineSchema: `version=http://json-schema.org/draft-07/schema,id=input,direction=in
@@ -54,7 +53,7 @@ func TestAPIMemory(t *testing.T) {
 		PostScript: ``,
 		AfterEvent: ``,
 	}
-	capi, err := NewApiCompiled(api)
+	capi, err := dataexchanger.NewApiCompiled(api)
 	if err != nil {
 		panic(err)
 	}
@@ -70,7 +69,7 @@ func TestAPIMemory(t *testing.T) {
 	selectSQL := "select * from component where 1=1   and deleted_at is null order by updated_at desc limit 0,20 ;"
 	countSQL := "select count(*) as count from component where 1=1   and deleted_at is null;"
 	sourceIdentifer := "test_provider"
-	source, err := tengosource.MakeSource(sourceIdentifer, tengosource.PROVIDER_SQL, sourceConfig)
+	source, err := dataexchanger.MakeSource(sourceIdentifer, dataexchanger.PROVIDER_SQL, sourceConfig)
 	if err != nil {
 		panic(err)
 	}
@@ -90,7 +89,9 @@ func TestAPIMemory(t *testing.T) {
 		panic(err)
 	}
 
-	container := NewContainer()
+	container := dataexchanger.NewContainer(func(logInfo interface{}, typeName string, err error) {
+		fmt.Println(logInfo)
+	})
 	container.RegisterAPI(capi)
 
 	routeCapi, ok := container.GetCApi(route, method)
@@ -101,14 +102,6 @@ func TestAPIMemory(t *testing.T) {
 	inputJson := `{"pageIndex":"0","pageSize":"20"}`
 	ctx := context.Background()
 	ctx = context.WithValue(ctx, "traceID", "12345")
-
-	readChain := tengologger.GetLoggerChain()
-	go func() {
-		for {
-			data := <-readChain
-			fmt.Println(data)
-		}
-	}()
 	out, err := routeCapi.Run(ctx, inputJson)
 	if err != nil {
 		panic(err)

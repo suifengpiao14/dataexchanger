@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+
+	"github.com/suifengpiao14/tengolib/tengologger"
 )
 
 // 容器，包含所有预备的资源、脚本等
@@ -12,11 +14,13 @@ type Container struct {
 	lockCApi sync.Mutex
 }
 
-func NewContainer() *Container {
-	return &Container{
+func NewContainer(logFn func(logInfo interface{}, typeName string, err error)) (container *Container) {
+	container = &Container{
 		apis:     map[string]*apiCompiled{},
 		lockCApi: sync.Mutex{},
 	}
+	container.setLogger(logFn) // 外部注入日志处理组件
+	return container
 }
 
 func (c *Container) RegisterAPI(capi *apiCompiled) {
@@ -47,4 +51,8 @@ func (c *Container) GetCApi(route string, method string) (capi *apiCompiled, ok 
 	return capi, ok
 }
 
+// SsetLogger 封装相关性——全局设置 功能
+func (c *Container) setLogger(fn func(logInfo interface{}, typeName string, err error)) {
+	tengologger.SetLoggerWriter(fn)
+}
 
