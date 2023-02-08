@@ -356,11 +356,6 @@ func (capi *apiCompiled) compileScript(script string) (c *tengo.Compiled, err er
 }
 
 func (capi *apiCompiled) execSQLTPL(args ...tengo.Object) (dbResultTengo tengo.Object, err error) {
-	sqlLogInfo := tengodb.LogInfoEXECSQL{}
-	defer func() {
-		sqlLogInfo.Err = err
-		tengologger.SendLogInfo(sqlLogInfo)
-	}()
 	argLen := len(args)
 	if argLen != 3 {
 		return nil, tengo.ErrWrongNumArguments
@@ -418,8 +413,6 @@ func (capi *apiCompiled) execSQLTPL(args ...tengo.Object) (dbResultTengo tengo.O
 	if err != nil {
 		return nil, err
 	}
-
-	sqlLogInfo.Result = dbResult
 	dbResultTengo = &tengo.String{Value: dbResult}
 	return dbResultTengo, nil
 }
