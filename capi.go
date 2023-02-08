@@ -328,6 +328,7 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 }
 
 func (capi *apiCompiled) compileScript(script string) (c *tengo.Compiled, err error) {
+	script = fmt.Sprintf(`func(){%s}()`, script)
 	s := tengo.NewScript([]byte(script))
 	s.EnableFileImport(true)
 	mods := stdlib.GetModuleMap(stdlib.AllModuleNames()...)
