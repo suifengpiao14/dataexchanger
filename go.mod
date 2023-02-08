@@ -7,7 +7,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/suifengpiao14/gojsonschemavalidator v0.0.3
 	github.com/suifengpiao14/jsonschemaline v0.0.9
-	github.com/suifengpiao14/tengolib v0.0.5
+	github.com/suifengpiao14/tengolib v0.0.6
 	github.com/tidwall/gjson v1.14.4
 	github.com/tidwall/sjson v1.2.5
 	github.com/xeipuuv/gojsonschema v1.2.0

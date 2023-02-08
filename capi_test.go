@@ -7,6 +7,7 @@ import (
 
 	"github.com/suifengpiao14/dataexchanger"
 	"github.com/suifengpiao14/tengolib/tengodb"
+	"github.com/suifengpiao14/tengolib/tengologger"
 )
 
 func TestAPIMemory(t *testing.T) {
@@ -87,7 +88,7 @@ func TestAPIMemory(t *testing.T) {
 	tplNames := capi.RegisterTemplate("", tplStr)
 	capi.SetTemplateDependSource(tplNames, sourceIdentifer)
 
-	container := dataexchanger.NewContainer(func(logInfo interface{}, typeName string, err error) {
+	container := dataexchanger.NewContainer(func(logInfo tengologger.LogInforInterface, typeName string, err error) {
 		fmt.Println(logInfo)
 	})
 	container.RegisterAPI(capi)

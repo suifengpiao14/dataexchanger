@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/suifengpiao14/tengolib/tengodb"
+	"github.com/suifengpiao14/tengolib/tengologger"
 	"github.com/suifengpiao14/tengolib/tengotemplate"
 )
 
@@ -17,11 +18,52 @@ const (
 type LogInfoEXECSQL tengodb.LogInfoEXECSQL
 type LogInfoTemplateSQL tengotemplate.LogInfoTemplateSQL
 
+type LogInforInterface tengologger.LogInforInterface
+
 /*****************************************统一管理日志end**********************************************/
 const (
 	LOG_INFO_RUN      = "apiCompiled.Run"
 	LOG_INFO_RUN_POST = "apiCompiled.Run.post"
 )
+
+//TryConvert2LogInfoExecSQL log 类型转换,先通过名称确定类型
+func TryConvert2LogInfoExecSQL(log tengologger.LogInforInterface) (logInfoEXECSQL tengodb.LogInfoEXECSQL, ok bool) {
+	logInfoEXECSQL, ok = log.(tengodb.LogInfoEXECSQL)
+	if ok {
+		return logInfoEXECSQL, ok
+	}
+	tmp, ok := log.(*tengodb.LogInfoEXECSQL)
+	if ok {
+		logInfoEXECSQL = *tmp
+	}
+	return logInfoEXECSQL, ok
+}
+
+//TryConvert2LogInfoSQLTemplate log 类型转换,先通过名称确定类型
+func TryConvert2LogInfoSQLTemplate(log tengologger.LogInforInterface) (logInfoTemplateSQL tengotemplate.LogInfoTemplateSQL, ok bool) {
+	logInfoTemplateSQL, ok = log.(tengotemplate.LogInfoTemplateSQL)
+	if ok {
+		return logInfoTemplateSQL, ok
+	}
+	tmp, ok := log.(*tengotemplate.LogInfoTemplateSQL)
+	if ok {
+		logInfoTemplateSQL = *tmp
+	}
+	return logInfoTemplateSQL, ok
+}
+
+//TryConvert2LogInfoRunLogInfo log 类型转换,先通过名称确定类型
+func TryConvert2LogInfoRunLogInfo(log tengologger.LogInforInterface) (logInfoRunLogInfoL RunLogInfo, ok bool) {
+	logInfoRunLogInfoL, ok = log.(RunLogInfo)
+	if ok {
+		return logInfoRunLogInfoL, ok
+	}
+	tmp, ok := log.(*RunLogInfo)
+	if ok {
+		logInfoRunLogInfoL = *tmp
+	}
+	return logInfoRunLogInfoL, ok
+}
 
 //RunLogInfo 运行是日志信息
 type RunLogInfo struct {

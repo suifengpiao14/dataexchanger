@@ -14,7 +14,7 @@ type Container struct {
 	lockCApi sync.Mutex
 }
 
-func NewContainer(logFn func(logInfo interface{}, typeName string, err error)) (container *Container) {
+func NewContainer(logFn func(logInfo tengologger.LogInforInterface, typeName string, err error)) (container *Container) {
 	container = &Container{
 		apis:     map[string]*apiCompiled{},
 		lockCApi: sync.Mutex{},
@@ -52,7 +52,6 @@ func (c *Container) GetCApi(route string, method string) (capi *apiCompiled, ok 
 }
 
 // SsetLogger 封装相关性——全局设置 功能
-func (c *Container) setLogger(fn func(logInfo interface{}, typeName string, err error)) {
+func (c *Container) setLogger(fn func(logInfo tengologger.LogInforInterface, typeName string, err error)) {
 	tengologger.SetLoggerWriter(fn)
 }
-
