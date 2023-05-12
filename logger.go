@@ -3,8 +3,8 @@ package dataexchanger
 import (
 	"context"
 
+	"github.com/suifengpiao14/logchan/v2"
 	"github.com/suifengpiao14/tengolib/tengodb"
-	"github.com/suifengpiao14/tengolib/tengologger"
 	"github.com/suifengpiao14/tengolib/tengotemplate"
 )
 
@@ -18,7 +18,7 @@ const (
 type LogInfoEXECSQL tengodb.LogInfoEXECSQL
 type LogInfoTemplateSQL tengotemplate.LogInfoTemplateSQL
 
-type LogInforInterface tengologger.LogInforInterface
+type LogInforInterface logchan.LogInforInterface
 
 /*****************************************统一管理日志end**********************************************/
 const (
@@ -27,7 +27,7 @@ const (
 )
 
 //TryConvert2LogInfoExecSQL log 类型转换,先通过名称确定类型
-func TryConvert2LogInfoExecSQL(log tengologger.LogInforInterface) (logInfoEXECSQL tengodb.LogInfoEXECSQL, ok bool) {
+func TryConvert2LogInfoExecSQL(log logchan.LogInforInterface) (logInfoEXECSQL tengodb.LogInfoEXECSQL, ok bool) {
 	logInfoEXECSQL, ok = log.(tengodb.LogInfoEXECSQL)
 	if ok {
 		return logInfoEXECSQL, ok
@@ -40,7 +40,7 @@ func TryConvert2LogInfoExecSQL(log tengologger.LogInforInterface) (logInfoEXECSQ
 }
 
 //TryConvert2LogInfoSQLTemplate log 类型转换,先通过名称确定类型
-func TryConvert2LogInfoSQLTemplate(log tengologger.LogInforInterface) (logInfoTemplateSQL tengotemplate.LogInfoTemplateSQL, ok bool) {
+func TryConvert2LogInfoSQLTemplate(log logchan.LogInforInterface) (logInfoTemplateSQL tengotemplate.LogInfoTemplateSQL, ok bool) {
 	logInfoTemplateSQL, ok = log.(tengotemplate.LogInfoTemplateSQL)
 	if ok {
 		return logInfoTemplateSQL, ok
@@ -53,7 +53,7 @@ func TryConvert2LogInfoSQLTemplate(log tengologger.LogInforInterface) (logInfoTe
 }
 
 //TryConvert2LogInfoRunLogInfo log 类型转换,先通过名称确定类型
-func TryConvert2LogInfoRunLogInfo(log tengologger.LogInforInterface) (logInfoRunLogInfoL RunLogInfo, ok bool) {
+func TryConvert2LogInfoRunLogInfo(log logchan.LogInforInterface) (logInfoRunLogInfoL RunLogInfo, ok bool) {
 	logInfoRunLogInfoL, ok = log.(RunLogInfo)
 	if ok {
 		return logInfoRunLogInfoL, ok
@@ -63,6 +63,12 @@ func TryConvert2LogInfoRunLogInfo(log tengologger.LogInforInterface) (logInfoRun
 		logInfoRunLogInfoL = *tmp
 	}
 	return logInfoRunLogInfoL, ok
+}
+
+type LogName string
+
+func (l LogName) String() string {
+	return string(l)
 }
 
 //RunLogInfo 运行是日志信息
@@ -78,9 +84,9 @@ type RunLogInfo struct {
 	Err           error
 }
 
-func (l RunLogInfo) GetName() string {
+func (l RunLogInfo) GetName() logchan.LogName {
 
-	return l.Name
+	return LogName(l.Name)
 }
 
 func (l RunLogInfo) Error() error {

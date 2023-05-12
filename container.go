@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/suifengpiao14/tengolib/tengologger"
+	"github.com/suifengpiao14/logchan/v2"
 )
 
 // 容器，包含所有预备的资源、脚本等
@@ -14,7 +14,7 @@ type Container struct {
 	lockCApi sync.Mutex
 }
 
-func NewContainer(logFn func(logInfo tengologger.LogInforInterface, typeName string, err error)) (container *Container) {
+func NewContainer(logFn func(logInfo logchan.LogInforInterface, typeName logchan.LogName, err error)) (container *Container) {
 	container = &Container{
 		apis:     map[string]*apiCompiled{},
 		lockCApi: sync.Mutex{},
@@ -52,6 +52,6 @@ func (c *Container) GetCApi(route string, method string) (capi *apiCompiled, ok 
 }
 
 // SsetLogger 封装相关性——全局设置 功能
-func (c *Container) setLogger(fn func(logInfo tengologger.LogInforInterface, typeName string, err error)) {
-	tengologger.SetLoggerWriter(fn)
+func (c *Container) setLogger(fn func(logInfo logchan.LogInforInterface, typeName logchan.LogName, err error)) {
+	logchan.SetLoggerWriter(fn)
 }

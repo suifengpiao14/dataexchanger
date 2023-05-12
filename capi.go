@@ -11,11 +11,11 @@ import (
 	"github.com/pkg/errors"
 	"github.com/suifengpiao14/gojsonschemavalidator"
 	"github.com/suifengpiao14/jsonschemaline"
+	"github.com/suifengpiao14/logchan/v2"
 	"github.com/suifengpiao14/tengolib"
 	"github.com/suifengpiao14/tengolib/tengocontext"
 	"github.com/suifengpiao14/tengolib/tengodb"
 	"github.com/suifengpiao14/tengolib/tengogsjson"
-	"github.com/suifengpiao14/tengolib/tengologger"
 	"github.com/suifengpiao14/tengolib/tengosource"
 	"github.com/suifengpiao14/tengolib/tengotemplate"
 	"github.com/tidwall/gjson"
@@ -205,7 +205,7 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 	defer func() {
 		// 发送日志
 		logInfo.Err = err
-		tengologger.SendLogInfo(logInfo)
+		logchan.SendLogInfo(logInfo)
 	}()
 	// 合并默认值
 	if capi.defaultJson != "" {
@@ -263,6 +263,9 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 			err = errors.WithMessage(err, "apiCompiled.Run.PreScript")
 			return "", err
 		}
+		if storage.Err != nil {
+			return "", err
+		}
 		logInfo.PreOutput = storage.DiskSpace
 	}
 
@@ -275,7 +278,9 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 			err = errors.WithMessage(err, "apiCompiled.Run.MainScript")
 			return "", err
 		}
-
+		if storage.Err != nil {
+			return "", err
+		}
 		logInfo.Out = storage.DiskSpace
 	}
 	//pos script 异步执行,需要同步处理的需要放到main中
@@ -301,17 +306,21 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 			defer func() {
 				if panicInfo := recover(); panicInfo != nil {
 					cpRunLogInfo.Err = errors.New(fmt.Sprintf("%v", panicInfo))
-					tengologger.SendLogInfo(cpRunLogInfo)
+					logchan.SendLogInfo(cpRunLogInfo)
 				}
 			}()
 			defer func() {
 				// 发送日志
 				cpRunLogInfo.Err = err
-				tengologger.SendLogInfo(cpRunLogInfo)
+				logchan.SendLogInfo(cpRunLogInfo)
 			}()
 
 			if err = c.Run(); err != nil {
 				err = errors.WithMessage(err, "apiCompiled.Run.PostScript")
+				return
+			}
+			if storage.Err != nil {
+				err = errors.WithMessage(err, "apiCompiled.Run.PostScript.Script")
 				return
 			}
 			cpRunLogInfo.PostOut = storage.DiskSpace
