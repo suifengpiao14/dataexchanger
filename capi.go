@@ -263,7 +263,8 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 			err = errors.WithMessage(err, "apiCompiled.Run.PreScript")
 			return "", err
 		}
-		if storage.Err != nil {
+		result := c.Get("__res__").Value()
+		if err := result.(error); err != nil {
 			return "", err
 		}
 		logInfo.PreOutput = storage.DiskSpace
@@ -278,7 +279,8 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 			err = errors.WithMessage(err, "apiCompiled.Run.MainScript")
 			return "", err
 		}
-		if storage.Err != nil {
+		result := c.Get("__res__").Value()
+		if err := result.(error); err != nil {
 			return "", err
 		}
 		logInfo.Out = storage.DiskSpace
@@ -319,8 +321,9 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 				err = errors.WithMessage(err, "apiCompiled.Run.PostScript")
 				return
 			}
-			if storage.Err != nil {
-				err = errors.WithMessage(err, "apiCompiled.Run.PostScript.Script")
+			result := c.Get("__res__").Value()
+			err = result.(error)
+			if err != nil {
 				return
 			}
 			cpRunLogInfo.PostOut = storage.DiskSpace
@@ -337,7 +340,7 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 }
 
 func (capi *apiCompiled) compileScript(script string) (c *tengo.Compiled, err error) {
-	script = fmt.Sprintf(`func(){%s}()`, script)
+	script = fmt.Sprintf(`__res__:=func(){%s}()`, script)
 	s := tengo.NewScript([]byte(script))
 	s.EnableFileImport(true)
 	mods := stdlib.GetModuleMap(stdlib.AllModuleNames()...)
