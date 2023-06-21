@@ -264,8 +264,10 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 			return "", err
 		}
 		result := c.Get("__res__").Value()
-		if err := result.(error); err != nil {
-			return "", err
+		if result != nil {
+			if err := result.(error); err != nil {
+				return "", err
+			}
 		}
 		logInfo.PreOutput = storage.DiskSpace
 	}
@@ -280,8 +282,10 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 			return "", err
 		}
 		result := c.Get("__res__").Value()
-		if err := result.(error); err != nil {
-			return "", err
+		if result != nil {
+			if err := result.(error); err != nil {
+				return "", err
+			}
 		}
 		logInfo.Out = storage.DiskSpace
 	}
@@ -322,9 +326,10 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 				return
 			}
 			result := c.Get("__res__").Value()
-			err = result.(error)
-			if err != nil {
-				return
+			if result != nil {
+				if err := result.(error); err != nil {
+					return
+				}
 			}
 			cpRunLogInfo.PostOut = storage.DiskSpace
 		}(c, logInfo)
