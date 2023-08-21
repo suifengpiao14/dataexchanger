@@ -76,20 +76,20 @@ func NewApiCompiled(api *DtoAPI) (capi *apiCompiled, err error) {
 	if api.InputLineSchema != "" {
 		inputLineschema, err := jsonschemaline.ParseJsonschemaline(api.InputLineSchema)
 		if err != nil {
-			err = errors.WithMessage(err, "makeApiCompiled.ParseJsonschemaline.InputLineSchema")
+			err = errors.WithMessagef(err, "makeApiCompiled.ParseJsonschemaline.InputLineSchema,route:%s", api.Route)
 			return nil, err
 		}
 		capi.inputLineSchema = inputLineschema
 		inputSchema, err := inputLineschema.JsonSchema()
 		if err != nil {
-			err = errors.WithMessage(err, "makeApiCompiled.JsonSchema.InputLineSchema")
+			err = errors.WithMessagef(err, "makeApiCompiled.JsonSchema.InputLineSchema,route:%s", api.Route)
 			return nil, err
 		}
 		inputSchemaLoader := gojsonschema.NewStringLoader(string(inputSchema))
 		capi.inputSchema = &inputSchemaLoader
 		defaultInputJson, err := jsonschemaline.ParseDefaultJson(*inputLineschema)
 		if err != nil {
-			err = errors.WithMessage(err, "makeApiCompiled.ParseDefaultJson.InputLineSchema")
+			err = errors.WithMessagef(err, "makeApiCompiled.ParseDefaultJson.InputLineSchema,route:%s", api.Route)
 			return nil, err
 		}
 		capi.defaultJson = defaultInputJson.Json
@@ -108,20 +108,20 @@ func NewApiCompiled(api *DtoAPI) (capi *apiCompiled, err error) {
 	if api.OutputLineSchema != "" {
 		outputLineschema, err := jsonschemaline.ParseJsonschemaline(api.OutputLineSchema)
 		if err != nil {
-			err = errors.WithMessage(err, "makeApiCompiled.ParseJsonschemaline.OutputLineSchema")
+			err = errors.WithMessagef(err, "makeApiCompiled.ParseJsonschemaline.OutputLineSchema,route:%s", api.Route)
 			return nil, err
 		}
 		capi.outputLineSchema = outputLineschema
 		outputSchema, err := outputLineschema.JsonSchema()
 		if err != nil {
-			err = errors.WithMessage(err, "makeApiCompiled.JsonSchema.OutputLineSchema")
+			err = errors.WithMessagef(err, "makeApiCompiled.JsonSchema.OutputLineSchema,route:%s", api.Route)
 			return nil, err
 		}
 		outputSchemaLoader := gojsonschema.NewStringLoader(string(outputSchema))
 		capi.outputSchema = &outputSchemaLoader
 		defaultOutputJson, err := jsonschemaline.ParseDefaultJson(*outputLineschema)
 		if err != nil {
-			err = errors.WithMessage(err, "makeApiCompiled.ParseDefaultJson.OutputLineSchema")
+			err = errors.WithMessagef(err, "makeApiCompiled.ParseDefaultJson.OutputLineSchema,route:%s", api.Route)
 			return nil, err
 		}
 		capi.outputDefault = defaultOutputJson.Json
@@ -141,7 +141,7 @@ func NewApiCompiled(api *DtoAPI) (capi *apiCompiled, err error) {
 	if api.PreScript != "" {
 		c, err := capi.compileScript(api.PreScript)
 		if err != nil {
-			err = errors.WithMessage(err, "makeApiCompiled.Compiled.PreScript")
+			err = errors.WithMessagef(err, "makeApiCompiled.Compiled.PreScript,route:%s", api.Route)
 			return nil, err
 		}
 		capi._preScript = c
@@ -150,7 +150,7 @@ func NewApiCompiled(api *DtoAPI) (capi *apiCompiled, err error) {
 	if api.MainScript != "" {
 		c, err := capi.compileScript(api.MainScript)
 		if err != nil {
-			err = errors.WithMessage(err, "makeApiCompiled.Compiled.MainScript")
+			err = errors.WithMessagef(err, "makeApiCompiled.Compiled.MainScript,route:%s", api.Route)
 			return nil, err
 		}
 		capi._mainScript = c
@@ -159,7 +159,7 @@ func NewApiCompiled(api *DtoAPI) (capi *apiCompiled, err error) {
 	if api.PostScript != "" {
 		c, err := capi.compileScript(api.PostScript)
 		if err != nil {
-			err = errors.WithMessage(err, "makeApiCompiled.Compiled.PostScript")
+			err = errors.WithMessagef(err, "makeApiCompiled.Compiled.PostScript,route:%s", api.Route)
 			return nil, err
 		}
 		capi._postScript = c
@@ -249,18 +249,18 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 		}
 	}
 	if err != nil {
-		err = errors.WithMessage(err, "set input to storage")
+		err = errors.WithMessagef(err, "set input to storage,route:%s", capi.Route)
 		return "", err
 	}
 	if c := capi.getPreScript(); c != nil {
 		logInfo.PreInput = storage.DiskSpace
 		if err = c.Set(VARIABLE_STORAGE, storage); err != nil {
-			err = errors.WithMessage(err, "apiCompiled.SetStorage.PreScript")
+			err = errors.WithMessagef(err, "apiCompiled.SetStorage.PreScript,route:%s", capi.Route)
 			return "", err
 		}
 		err = c.Run()
 		if err != nil {
-			err = errors.WithMessage(err, "apiCompiled.Run.PreScript")
+			err = errors.WithMessagef(err, "apiCompiled.Run.PreScript,route:%s", capi.Route)
 			return "", err
 		}
 		result := c.Get("__res__").Value()
@@ -274,11 +274,11 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 
 	if c := capi.getMainScript(); c != nil {
 		if err = c.Set(VARIABLE_STORAGE, storage); err != nil {
-			err = errors.WithMessage(err, "apiCompiled.SetStorage.MainScript")
+			err = errors.WithMessagef(err, "apiCompiled.SetStorage.MainScript,route:%s", capi.Route)
 			return "", err
 		}
 		if err = c.Run(); err != nil {
-			err = errors.WithMessage(err, "apiCompiled.Run.MainScript")
+			err = errors.WithMessagef(err, "apiCompiled.Run.MainScript,route:%s", capi.Route)
 			return "", err
 		}
 		result := c.Get("__res__").Value()
@@ -292,7 +292,7 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 	//pos script 异步执行,需要同步处理的需要放到main中
 	if c := capi.getPostScript(); c != nil {
 		if err = c.Set(VARIABLE_STORAGE, storage); err != nil {
-			err = errors.WithMessage(err, "apiCompiled.SetStorage.PostScript")
+			err = errors.WithMessagef(err, "apiCompiled.SetStorage.PostScript,route:%s", capi.Route)
 			return "", err
 		}
 
@@ -322,7 +322,7 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 			}()
 
 			if err = c.Run(); err != nil {
-				err = errors.WithMessage(err, "apiCompiled.Run.PostScript")
+				err = errors.WithMessagef(err, "apiCompiled.Run.PostScript,route:%s", capi.Route)
 				return
 			}
 			result := c.Get("__res__").Value()
