@@ -421,9 +421,13 @@ func (capi *apiCompiled) execSQLTPL(args ...tengo.Object) (dbResultTengo tengo.O
 	if err != nil {
 		return nil, err
 	}
-	dbProvider, ok := provider.(tengodb.TengoDBInterface)
+	dbProvider, ok := provider.(*tengodb.TengoDB)
 	if !ok {
-		err = errors.Errorf("ExecSQLTPL required db source,got:%s", provider.TypeName())
+		err = errors.Errorf("ExecSQLTPL required tengodb.TengoDB  source,got:%s", provider.TypeName())
+		return nil, err
+	}
+	if dbProvider.GetDB() == nil {
+		err = errors.Errorf("ExecSQLTPL  tengodb.TengoDB  required,got nil (%s)", provider.TypeName())
 		return nil, err
 	}
 	dbResult, err := dbProvider.ExecOrQueryContext(ctx, sqlStr)

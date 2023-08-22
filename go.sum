@@ -163,8 +163,8 @@ github.com/suifengpiao14/jsonschemaline v0.0.9 h1:35FHzSmr4AwBRUFktaGSVbgQOqscs0
 github.com/suifengpiao14/jsonschemaline v0.0.9/go.mod h1:dvWLxNu3yQDM1oCcexkWgyWx8eZk55Rv4hMgmMfi674=
 github.com/suifengpiao14/logchan/v2 v2.0.12 h1:bfQY/DMj3EXzMS42DOZbdxKgz+UuoCvThMtnrRciSI8=
 github.com/suifengpiao14/logchan/v2 v2.0.12/go.mod h1:c2DmWbatHcQhLZu1ZiKfMa5B7UFa9APSDqSkTiPBO/4=
-github.com/suifengpiao14/tengolib v0.0.9 h1:ThFNA4XM0/woOR632gVJyXkf+a/UCEMMbnUTI20oI6Q=
-github.com/suifengpiao14/tengolib v0.0.9/go.mod h1:luDCEAEdBW18ZMb0Yp/8c0j/K0L8V6zNibRTrORVG/g=
+github.com/suifengpiao14/tengolib v0.0.10 h1:poaTeDUbMAbxEDfMmovYbau0YR82AL3ZC6MeLjvknUY=
+github.com/suifengpiao14/tengolib v0.0.10/go.mod h1:luDCEAEdBW18ZMb0Yp/8c0j/K0L8V6zNibRTrORVG/g=
 github.com/tidwall/gjson v1.12.1/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
 github.com/tidwall/gjson v1.14.1/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
 github.com/tidwall/gjson v1.14.2/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
