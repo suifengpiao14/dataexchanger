@@ -205,7 +205,7 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 	defer func() {
 		// 发送日志
 		logInfo.Err = err
-		logchan.SendLogInfo(logInfo)
+		logchan.SendLogInfo(&logInfo)
 	}()
 	// 合并默认值
 	if capi.defaultJson != "" {
@@ -312,13 +312,13 @@ func (capi *apiCompiled) Run(ctx context.Context, inputJson string) (out string,
 			defer func() {
 				if panicInfo := recover(); panicInfo != nil {
 					cpRunLogInfo.Err = errors.New(fmt.Sprintf("%v", panicInfo))
-					logchan.SendLogInfo(cpRunLogInfo)
+					logchan.SendLogInfo(&cpRunLogInfo)
 				}
 			}()
 			defer func() {
 				// 发送日志
 				cpRunLogInfo.Err = err
-				logchan.SendLogInfo(cpRunLogInfo)
+				logchan.SendLogInfo(&cpRunLogInfo)
 			}()
 
 			if err = c.Run(); err != nil {

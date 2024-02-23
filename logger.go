@@ -27,40 +27,40 @@ const (
 )
 
 //TryConvert2LogInfoExecSQL log 类型转换,先通过名称确定类型
-func TryConvert2LogInfoExecSQL(log logchan.LogInforInterface) (logInfoEXECSQL tengodb.LogInfoEXECSQL, ok bool) {
-	logInfoEXECSQL, ok = log.(tengodb.LogInfoEXECSQL)
+func TryConvert2LogInfoExecSQL(log logchan.LogInforInterface) (logInfoEXECSQL *tengodb.LogInfoEXECSQL, ok bool) {
+	logInfoEXECSQL, ok = log.(*tengodb.LogInfoEXECSQL)
 	if ok {
 		return logInfoEXECSQL, ok
 	}
 	tmp, ok := log.(*tengodb.LogInfoEXECSQL)
 	if ok {
-		logInfoEXECSQL = *tmp
+		logInfoEXECSQL = tmp
 	}
 	return logInfoEXECSQL, ok
 }
 
 //TryConvert2LogInfoSQLTemplate log 类型转换,先通过名称确定类型
-func TryConvert2LogInfoSQLTemplate(log logchan.LogInforInterface) (logInfoTemplateSQL tengotemplate.LogInfoTemplateSQL, ok bool) {
-	logInfoTemplateSQL, ok = log.(tengotemplate.LogInfoTemplateSQL)
+func TryConvert2LogInfoSQLTemplate(log logchan.LogInforInterface) (logInfoTemplateSQL *tengotemplate.LogInfoTemplateSQL, ok bool) {
+	logInfoTemplateSQL, ok = log.(*tengotemplate.LogInfoTemplateSQL)
 	if ok {
 		return logInfoTemplateSQL, ok
 	}
 	tmp, ok := log.(*tengotemplate.LogInfoTemplateSQL)
 	if ok {
-		logInfoTemplateSQL = *tmp
+		logInfoTemplateSQL = tmp
 	}
 	return logInfoTemplateSQL, ok
 }
 
 //TryConvert2LogInfoRunLogInfo log 类型转换,先通过名称确定类型
-func TryConvert2LogInfoRunLogInfo(log logchan.LogInforInterface) (logInfoRunLogInfoL RunLogInfo, ok bool) {
-	logInfoRunLogInfoL, ok = log.(RunLogInfo)
+func TryConvert2LogInfoRunLogInfo(log logchan.LogInforInterface) (logInfoRunLogInfoL *RunLogInfo, ok bool) {
+	logInfoRunLogInfoL, ok = log.(*RunLogInfo)
 	if ok {
 		return logInfoRunLogInfoL, ok
 	}
 	tmp, ok := log.(*RunLogInfo)
 	if ok {
-		logInfoRunLogInfoL = *tmp
+		logInfoRunLogInfoL = tmp
 	}
 	return logInfoRunLogInfoL, ok
 }
@@ -82,6 +82,7 @@ type RunLogInfo struct {
 	Out           string          `json:"out"`
 	PostOut       interface{}     `json:"postOut"`
 	Err           error
+	logchan.EmptyLogInfo
 }
 
 func (l RunLogInfo) GetName() logchan.LogName {
